@@ -47,7 +47,7 @@
 #include "synthutils.h"
 #include "zoneutils.h"
 
-//#define _TPZ_SYNTH_DEBUG_MESSAGES_ // включаем отладочные сообщения
+#define _TPZ_SYNTH_DEBUG_MESSAGES_ // включаем отладочные сообщения
 
 namespace synthutils
 {
@@ -172,7 +172,7 @@ double getSynthDifficulty(CCharEntity* PChar, uint8 skillID)
     uint8  ElementDirection = 0;
     uint8  WeekDay = (uint8)CVanaTime::getInstance()->getWeekday();
     uint8  crystalElement = PChar->CraftContainer->getType();
-    uint8  direction = (PChar->loc.p.rotation - 16)/32;
+    uint8  direction = (PChar->loc.p.rotation)/32;
     uint8  strongElement[8] = {2,3,5,4,0,1,7,6};
     Mod ModID = Mod::NONE;
 
@@ -213,25 +213,13 @@ double getSynthDifficulty(CCharEntity* PChar, uint8 skillID)
 
     if (map_config.craft_direction_matters == 1)
     {
-        switch (direction)
+        if (direction == 4 || direction == 5)
         {
-            case 0: ElementDirection = ELEMENT_WIND;      break;
-            case 1: ElementDirection = ELEMENT_EARTH;     break;
-            case 2: ElementDirection = ELEMENT_LIGHTNING; break;
-            case 3: ElementDirection = ELEMENT_WATER;     break;
-            case 4: ElementDirection = ELEMENT_FIRE;      break;
-            case 5: ElementDirection = ELEMENT_DARK;      break;
-            case 6: ElementDirection = ELEMENT_LIGHT;     break;
-            case 7: ElementDirection = ELEMENT_ICE;       break;
+            difficult -= 2.5;
         }
-
-        if (crystalElement == ElementDirection)
+        else if (direction == 8 || direction == 0)
         {
-            difficult -= 0.5;
-        }
-        else if (strongElement[crystalElement] == ElementDirection)
-        {
-            difficult += 0.5;
+            difficult += 2.5;
         }
     }
 
@@ -419,6 +407,20 @@ uint8 calcSynthResult(CCharEntity* PChar)
                                 chance *= 1.0 - ((double)1 / 3);
                             else if (WeekDay == DARKSDAY)
                                 chance *= 1.0 + ((double)1 / 3);
+                        }
+
+                        if (map_config.craft_direction_matters)
+                        {
+                            uint8  direction = (PChar->loc.p.rotation) / 32;
+
+                            if (direction == 4 || direction == 5)
+                            {
+                                chance *= .33;
+                            }
+                            else if (direction == 8 || direction == 0)
+                            {
+                                chance *= 1.66;
+                            }
                         }
 
                         chance = std::clamp(chance, 0., 0.500);
