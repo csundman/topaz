@@ -409,7 +409,7 @@ void CZoneEntities::SpawnMOBs(CCharEntity* PChar)
 
             CMobController* PController = static_cast<CMobController*>(PCurrentMob->PAI->GetController());
 
-            bool validAggro = mobCheck > EMobDifficulty::TooWeak || PChar->isSitting() || PCurrentMob->getMobMod(MOBMOD_ALWAYS_AGGRO);
+            bool validAggro = mobCheck > EMobDifficulty::IncrediblyEasyPrey || PChar->isSitting() || PCurrentMob->getMobMod(MOBMOD_ALWAYS_AGGRO);
 
             if (validAggro && PController->CanAggroTarget(PChar))
                 PCurrentMob->PEnmityContainer->AddBaseEnmity(PChar);
