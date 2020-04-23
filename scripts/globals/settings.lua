@@ -16,8 +16,8 @@
 require("scripts/globals/common")
 
 -- Enable Expansion (1= yes 0= no)
-ENABLE_COP     = 0
-ENABLE_TOAU    = 0
+ENABLE_COP     = 1
+ENABLE_TOAU    = 1
 ENABLE_WOTG    = 0
 ENABLE_ACP     = 0
 ENABLE_AMK     = 0
@@ -71,7 +71,7 @@ DARK_POWER      = 1.000 -- Multiplies amount drained by Dark Magic.
 ITEM_POWER      = 1.000 -- Multiplies the effect of items such as Potions and Ethers.
 WEAPON_SKILL_POWER  = 1.000 -- Multiplies damage dealt by Weapon Skills.
 WEAPON_SKILL_POINTS = 1.000 -- Multiplies points earned during weapon unlocking.
-USE_ADOULIN_WEAPON_SKILL_CHANGES = false -- true/false. Change to toggle new Adoulin weapon skill damage calculations
+USE_ADOULIN_WEAPON_SKILL_CHANGES = true -- true/false. Change to toggle new Adoulin weapon skill damage calculations
 
 HARVESTING_BREAK_CHANCE = 33 -- % chance for the sickle to break during harvesting.  Set between 0 and 100.
 EXCAVATION_BREAK_CHANCE = 33 -- % chance for the pickaxe to break during excavation.  Set between 0 and 100.
@@ -131,7 +131,7 @@ USE_OLD_CURE_FORMULA = false -- true/false. if true, uses older cure formula (3*
 USE_OLD_MAGIC_DAMAGE = false -- true/false. if true, uses older magic damage formulas
 
 -- CELEBRATIONS
-EXPLORER_MOOGLE_LV = 10 -- Enables Explorer Moogle teleports and sets required level. Zero to disable.
+EXPLORER_MOOGLE_LV = 0 -- Enables Explorer Moogle teleports and sets required level. Zero to disable.
 HALLOWEEN_2005 = 0 -- Set to 1 to Enable the 2005 version of Harvest Festival, will start on Oct. 20 and end Nov. 1.
 HALLOWEEN_YEAR_ROUND = 0 -- Set to 1 to have Harvest Festival initialize outside of normal times.
 
@@ -144,7 +144,7 @@ TIMEZONE_OFFSET = 9.0 -- Offset from UTC used to determine when "JP Midnight" is
 ALLOW_MULTIPLE_EXP_RINGS = 0 -- Set to 1 to remove ownership restrictions on the Chariot/Empress/Emperor Band trio.
 BYPASS_EXP_RING_ONE_PER_WEEK = 0 -- -- Set to 1 to bypass the limit of one ring per Conquest Tally Week.
 NUMBER_OF_DM_EARRINGS = 1 -- Number of earrings players can simultaneously own from Divine Might before scripts start blocking them (Default: 1)
-HOMEPOINT_TELEPORT = 0 -- Enables the homepoint teleport system
+HOMEPOINT_TELEPORT = 1 -- Enables the homepoint teleport system
 DIG_ABUNDANCE_BONUS = 0 -- Increase chance of digging up an item (450  = item digup chance +45)
 DIG_FATIGUE = 1 -- Set to 0 to disable Dig Fatigue
 DIG_GRANT_BURROW = 0 -- Set to 1 to grant burrow ability
