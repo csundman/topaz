@@ -829,7 +829,7 @@ end
 
 local function canBuyExpRing(player, item)
     local text = zones[player:getZoneID()].text
-
+	
     -- check exp ring count
     if ALLOW_MULTIPLE_EXP_RINGS ~= 1 then
         for i = 15761, 15763 do
@@ -1014,12 +1014,24 @@ tpz.conquest.overseerOnTrigger = function(player, npc, guardNation, guardType, g
 
     -- CITY AND FOREIGN OVERSEERS
     elseif guardType <= tpz.conquest.guard.FOREIGN then
+		local sandyRank = 2
+		local bastyRank = 2
+		local windyRank = 2
+		
+		if guardNation == tpz.nation.SANDORIA then
+			sandyRank = 1
+		elseif guardNation == tpz.nation.BASTOK then
+			bastyRank = 1
+		else
+			windyRank = 1
+		end
+		
         local a1 = getArg1(player, guardNation, guardType)
         local a2 = getExForceAvailable(player, guardNation)
-        local a3 = conquestRanking()
+        local a3 = sandyRank + 4 * bastyRank + 16 * windyRank
         local a4 = suppliesAvailableBitmask(player, guardNation)
         local a5 = player:getTeleport(guardNation)
-        local a6 = getArg6(player)
+        local a6 = player:getRank() + (guardNation * 32)
         local a7 = player:getCP()
         local a8 = getExForceReward(player, guardNation)
 
@@ -1151,13 +1163,6 @@ tpz.conquest.overseerOnEventFinish = function(player, csid, option, guardNation,
 
         -- validate price
         local price = stock.cp
-        if stock.rank ~= nil and player:getNation() ~= guardNation and guardNation ~= tpz.nation.OTHER then
-            if price <= 8000 then
-                price = price * 2
-            else
-                price = price + 8000
-            end
-        end
         if player:getCP() < price then
             player:messageSpecial(mOffset + 62, 0, 0, stock.item) -- "You do not have enough conquest points to purchase the <item>."
             return
@@ -1194,12 +1199,12 @@ tpz.conquest.vendorOnTrigger = function(player, vendorRegion, vendorEvent)
     end
 
     local fee = tpz.conquest.outpostFee(player, vendorRegion)
-    player:startEvent(vendorEvent,nation,fee,0,fee,player:getCP(),0,0,0)
+    player:startEvent(vendorEvent,nation,fee,0,fee/10,player:getCP(),0,0,0)
 end
 
 tpz.conquest.vendorOnEventUpdate = function(player, vendorRegion)
     local fee = tpz.conquest.outpostFee(player, vendorRegion)
-    player:updateEvent(player:getGil(),fee,0,fee,player:getCP())
+    player:updateEvent(player:getGil(),fee,0,fee/10,player:getCP())
 end
 
 tpz.conquest.vendorOnEventFinish = function(player, option, vendorRegion)
@@ -1212,7 +1217,7 @@ tpz.conquest.vendorOnEventFinish = function(player, option, vendorRegion)
             player:addStatusEffectEx(tpz.effect.TELEPORT, 0, tpz.teleport.id.HOME_NATION, 0, 1, 0, region)
         end
     elseif option == 6 then
-        player:delCP(fee)
+        player:delCP(fee/10)
         player:addStatusEffectEx(tpz.effect.TELEPORT, 0, tpz.teleport.id.HOME_NATION, 0, 1, 0, region)
     end
 end
@@ -1245,7 +1250,7 @@ tpz.conquest.teleporterOnEventUpdate = function(player, csid, option, teleporter
     if csid == teleporterEvent then
         local region = option - 1073741829
         local fee = tpz.conquest.outpostFee(player, region)
-        player:updateEvent(player:getGil(), fee, 0, fee, player:getCP())
+        player:updateEvent(player:getGil(), fee, 0, fee/10, player:getCP())
     end
 end
 
@@ -1263,7 +1268,7 @@ tpz.conquest.teleporterOnEventFinish = function(player, csid, option, teleporter
         -- TELEPORT WITH CP
         elseif option >= 1029 and option <= 1047 then
             local region = option - 1029
-            local fee = tpz.conquest.outpostFee(player, region)
+            local fee = tpz.conquest.outpostFee(player, region)/10
 
             if tpz.conquest.canTeleportToOutpost(player, region) and player:getCP() >= fee then
                 player:delCP(fee)
