@@ -217,7 +217,7 @@ double getSynthDifficulty(CCharEntity* PChar, uint8 skillID)
         {
             difficult -= 2.5;
         }
-        else if (direction == 8 || direction == 0)
+        else if (direction == 7 || direction == 0)
         {
             difficult += 2.5;
         }
@@ -409,15 +409,15 @@ uint8 calcSynthResult(CCharEntity* PChar)
                                 chance *= 1.0 + ((double)1 / 3);
                         }
 
+                        uint8  direction = (PChar->loc.p.rotation) / 32;
+
                         if (map_config.craft_direction_matters)
                         {
-                            uint8  direction = (PChar->loc.p.rotation) / 32;
-
                             if (direction == 4 || direction == 5)
                             {
                                 chance *= .33;
                             }
-                            else if (direction == 8 || direction == 0)
+                            else if (direction == 7 || direction == 0)
                             {
                                 chance *= 1.66;
                             }
@@ -427,6 +427,7 @@ uint8 calcSynthResult(CCharEntity* PChar)
                     }
 
                     #ifdef _TPZ_SYNTH_DEBUG_MESSAGES_
+                    ShowDebug(CL_CYAN"Craft Direction: %u\n" CL_RESET, direction);
                     ShowDebug(CL_CYAN"HQ Tier: %i HQ Chance: %g Random: %g SkillID: %u\n" CL_RESET, hqtier, chance, random, skillID);
                     #endif
 
