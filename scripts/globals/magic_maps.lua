@@ -172,6 +172,54 @@ local p30 = { --Maps that are price at 30,000 gil
     Uoption[71],    --Grauberg
     Uoption[72]        --Fort Karugo-Narugo
     }
+	
+local blockMap = { --Maps that are blocked from purchasing
+	[dsp.ki.MAP_OF_THE_NORTHLANDS_AREA] = 1,
+	[dsp.ki.MAP_OF_KING_RANPERRES_TOMB] = 1, 
+	[dsp.ki.MAP_OF_THE_DANGRUF_WADI] = 1, 
+	[dsp.ki.MAP_OF_THE_HORUTOTO_RUINS] = 1, 
+	[dsp.ki.MAP_OF_BOSTAUNIEUX_OUBLIETTE] = 1,
+    [dsp.ki.MAP_OF_THE_TORAIMARAI_CANAL] = 1,
+	[dsp.ki.MAP_OF_THE_GUSGEN_MINES] = 1, 
+	[dsp.ki.MAP_OF_THE_CRAWLERS_NEST] = 1, 
+	[dsp.ki.MAP_OF_THE_RANGUEMONT_PASS] = 1, 
+	[dsp.ki.MAP_OF_DELKFUTTS_TOWER] = 1, 
+	[dsp.ki.MAP_OF_FEIYIN] = 1, 
+	[dsp.ki.MAP_OF_CASTLE_ZVAHL] = 1, 
+	[dsp.ki.MAP_OF_THE_KUZOTZ_REGION] = 1,
+    [dsp.ki.MAP_OF_THE_RUAUN_GARDENS] = 1, 
+	[dsp.ki.MAP_OF_NORG] = 1,
+	[dsp.ki.MAP_OF_THE_TEMPLE_OF_UGGALEPIH] = 1, 
+	[dsp.ki.MAP_OF_THE_DEN_OF_RANCOR] = 1, 
+	[dsp.ki.MAP_OF_THE_KUFTAL_TUNNEL] = 1, 
+	[dsp.ki.MAP_OF_THE_BOYAHDA_TREE] = 1,
+	[dsp.ki.MAP_OF_THE_VELUGANNON_PALACE] = 1,
+    [dsp.ki.MAP_OF_IFRITS_CAULDRON] = 1, 
+	[dsp.ki.MAP_OF_THE_QUICKSAND_CAVES] = 1,
+	[dsp.ki.MAP_OF_THE_SEA_SERPENT_GROTTO] = 1,
+	[dsp.ki.MAP_OF_THE_LABYRINTH_OF_ONZOZO] = 1, 
+	[dsp.ki.MAP_OF_THE_ULEGUERAND_RANGE] = 1, 
+	[dsp.ki.MAP_OF_THE_ATTOHWA_CHASM] = 1, 
+	[dsp.ki.MAP_OF_PSOXJA] = 1,
+    [dsp.ki.MAP_OF_OLDTON_MOVALPOLOS] = 1, 
+	[dsp.ki.MAP_OF_NEWTON_MOVALPOLOS] = 1,
+	[dsp.ki.MAP_OF_TAVNAZIA] = 1, 
+	[dsp.ki.MAP_OF_THE_AQUEDUCTS] = 1, 
+	[dsp.ki.MAP_OF_THE_SACRARIUM] = 1, 
+	[dsp.ki.MAP_OF_CAPE_RIVERNE] = 1, 
+	[dsp.ki.MAP_OF_ALTAIEU] = 1, 
+	[dsp.ki.MAP_OF_HUXZOI] = 1, 
+	[dsp.ki.MAP_OF_RUHMET] = 1,
+	[dsp.ki.MAP_OF_CAEDARVA_MIRE] = 1, 
+	[dsp.ki.MAP_OF_MOUNT_ZHAYOLM] = 1, 
+	[dsp.ki.MAP_OF_AYDEEWA_SUBTERRANE] = 1, 
+	[dsp.ki.MAP_OF_MAMOOK] = 1, 
+	[dsp.ki.MAP_OF_HALVUNG] = 1, 
+	[dsp.ki.MAP_OF_ALZADAAL_RUINS] = 1,
+    [dsp.ki.MAP_OF_VUNKERL_INLET] = 1, 
+	[dsp.ki.MAP_OF_GRAUBERG] = 1, 
+	[dsp.ki.MAP_OF_FORT_KARUGONARUGO] = 1
+};
 
 function CheckMaps(player, npc, csid)
     local i = 0
@@ -180,21 +228,21 @@ function CheckMaps(player, npc, csid)
     local mapVar3 = 0
 
     while i <= 31 do
-        if player:hasKeyItem(Maps[i+1]) then
+        if player:hasKeyItem(Maps[i+1]) or blockMap[Maps[i+1]] == 1 then
             mapVar1 = bit.bor(mapVar1, bit.lshift(1,i))
         end
         i = i + 1
     end
 
     while i <= 63 do
-        if player:hasKeyItem(Maps[i+1]) then
+        if player:hasKeyItem(Maps[i+1]) or blockMap[Maps[i+1]] == 1 then
             mapVar2 = bit.bor(mapVar2, bit.lshift(1,i))
         end
         i = i + 1
     end
 
     while i <= 71 do
-        if player:hasKeyItem(Maps[i+1]) then
+        if player:hasKeyItem(Maps[i+1]) or blockMap[Maps[i+1]] == 1 then
             mapVar3 = bit.bor(mapVar3, bit.lshift(1,i))
         end
         i = i + 1
@@ -246,21 +294,21 @@ function CheckMapsUpdate (player, option, NOT_HAVE_ENOUGH_GIL, KEYITEM_OBTAINED)
 
     i=0
     while i <= 31 do
-        if player:hasKeyItem(Maps[i+1]) then
+        if player:hasKeyItem(Maps[i+1]) or blockMap[Maps[i+1]] == 1 then
             mapVar1 = bit.bor(mapVar1, bit.lshift(1,i))
         end
         i = i + 1
     end
 
     while i <= 63 do
-        if player:hasKeyItem(Maps[i+1]) then
+        if player:hasKeyItem(Maps[i+1]) or blockMap[Maps[i+1]] == 1 then
             mapVar2 = bit.bor(mapVar2, bit.lshift(1,i))
         end
         i = i + 1
     end
 
     while i <= 71 do
-        if player:hasKeyItem(Maps[i+1]) then
+        if player:hasKeyItem(Maps[i+1]) or blockMap[Maps[i+1]] == 1 then
             mapVar3 = bit.bor(mapVar3, bit.lshift(1,i))
         end
         i = i + 1
