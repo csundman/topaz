@@ -881,6 +881,19 @@ void CZone::CharZoneIn(CCharEntity* PChar)
         PChar->PInstance = nullptr;
     }
 
+    //-----Custom code to increase movement speed in non-threatening environments
+
+    if (m_zoneID >= 230 && m_zoneID <= 252)
+    {
+        PChar->speed = 70;
+    }
+    else
+    {
+        PChar->speed = 40;
+    }
+
+    //---------------------------------------------------------------------------
+
     if (m_BattlefieldHandler)
         if (auto PBattlefield = m_BattlefieldHandler->GetBattlefield(PChar, true))
             PBattlefield->InsertEntity(PChar, true);

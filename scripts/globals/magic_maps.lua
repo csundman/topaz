@@ -219,7 +219,7 @@ local blockMap = { --Maps that are blocked from purchasing
     [dsp.ki.MAP_OF_VUNKERL_INLET] = 1, 
 	[dsp.ki.MAP_OF_GRAUBERG] = 1, 
 	[dsp.ki.MAP_OF_FORT_KARUGONARUGO] = 1
-};
+}
 
 function CheckMaps(player, npc, csid)
     local i = 0
