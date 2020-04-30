@@ -1054,6 +1054,7 @@ tpz.conquest.overseerOnEventUpdate = function(player, csid, option, guardNation)
     if stock ~= nil then
         local pNation = player:getNation()
         local pRank   = getNationRank(pNation)
+		pNation = guardNation
         local u1 = 2 -- default: player is correct job and level to equip item
         local u2 = 0 -- default: player has enough CP for item
         local u3 = stock.item -- default: the item ID we're purchasing
