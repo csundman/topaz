@@ -67,7 +67,7 @@ tpz.mob.phOnDespawn = function(ph, phList, chance, cooldown, immediate)
         if nm ~= nil then
             local pop = nm:getLocalVar("pop")
 
-            if os.time() > pop and not lotteryPrimed(phList) and math.random(100) <= chance then
+            if os.time() > pop and not lotteryPrimed(phList) then
 
                 -- on PH death, replace PH repop with NM repop
                 DisallowRespawn(phId, true)
