@@ -213,18 +213,18 @@ double getSynthDifficulty(CCharEntity* PChar, uint8 skillID)
 
     if (map_config.craft_direction_matters == 1)
     {
-        if (direction == 4 || direction == 5)
+        if (direction == 5 || direction == 6)
         {
             difficult -= 2.5;
         }
-        else if (direction == 7 || direction == 0)
+        else if (direction == 1 || direction == 2)
         {
             difficult += 2.5;
         }
     }
 
     #ifdef _TPZ_SYNTH_DEBUG_MESSAGES_
-    ShowDebug(CL_CYAN"Direction = %i\n" CL_RESET, ElementDirection);
+    ShowDebug(CL_CYAN"Direction = %i\n" CL_RESET, direction);
     ShowDebug(CL_CYAN"Day = %i\n" CL_RESET, WeekDay);
     ShowDebug(CL_CYAN"Moon = %g\n" CL_RESET, MoonPhase);
     ShowDebug(CL_CYAN"Difficulty = %g\n" CL_RESET, difficult);
@@ -386,6 +386,8 @@ uint8 calcSynthResult(CCharEntity* PChar)
 
                     int16 modSynthHqRate = PChar->getMod(Mod::SYNTH_HQ_RATE);
 
+                    uint8  direction = (PChar->loc.p.rotation) / 32;
+
                     // Using x/512 calculation for HQ success rate modifier
                     // see: https://www.bluegartr.com/threads/130586-CraftyMath-v2-Post-September-2017-Update
                     chance += (double)modSynthHqRate / 512.;
@@ -409,15 +411,13 @@ uint8 calcSynthResult(CCharEntity* PChar)
                                 chance *= 1.0 + ((double)1 / 3);
                         }
 
-                        uint8  direction = (PChar->loc.p.rotation) / 32;
-
                         if (map_config.craft_direction_matters)
                         {
-                            if (direction == 4 || direction == 5)
+                            if (direction == 5 || direction == 6)
                             {
                                 chance *= .33;
                             }
-                            else if (direction == 7 || direction == 0)
+                            else if (direction == 1 || direction == 2)
                             {
                                 chance *= 1.66;
                             }
