@@ -785,7 +785,7 @@ void CMobEntity::DropItems(CCharEntity* PChar)
     uint8 dropCount = 0;
 
     DropList_t* DropList = itemutils::GetDropList(m_DropID);
-    //ShowDebug(CL_CYAN"DropID: %u dropping with TH Level: %u\n" CL_RESET, PMob->m_DropID, PMob->m_THLvl);
+    ShowDebug(CL_CYAN"DropID: %u dropping with TH Level: %u\n" CL_RESET, m_DropID, m_THLvl);
 
     if (DropList != nullptr && !getMobMod(MOBMOD_NO_DROPS) && (DropList->Items.size() || DropList->Groups.size()))
     {
@@ -823,7 +823,10 @@ void CMobEntity::DropItems(CCharEntity* PChar)
         {
             for (int16 roll = 0; roll < maxRolls; ++roll)
             {
-                if (item.DropRate > 0 && tpzrand::GetRandomNumber(1000) < item.DropRate * map_config.drop_rate_multiplier + bonus)
+                int rand = tpzrand::GetRandomNumber(1000);
+                int rate = item.DropRate * map_config.drop_rate_multiplier + bonus;
+                ShowDebug("ItemID: %u - Roll: %i - Rate: %i\n", item.ItemID, rand, rate);
+                if (item.DropRate > 0 && rand < rate)
                 {
                     if (AddItemToPool(item.ItemID, ++dropCount))
                         return;
