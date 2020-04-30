@@ -1343,6 +1343,9 @@ tpz.regime.checkRegime = function(player, mob, regimeId, index, regimeType)
 
         player:setCharVar("[regime]lastReward", vanadielEpoch)
     end
+	
+	-- custom effect on xp to make valor xp not use global xp bonus
+	reward = reward / 1.5
 
     -- award XP every page completion
     player:addExp(reward)
