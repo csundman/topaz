@@ -21,6 +21,7 @@ local stock = {
 	["goldsmithing2"] = 528,
 	["leathercraft1"] = 529,
 	["cooking1"] = 530,
+	["cooking2"] = 5301,
 	["smithing1"] = 531,
 	["smithing2"] = 532,
 	["woodworking1"] = 534,
