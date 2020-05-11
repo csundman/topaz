@@ -15,7 +15,7 @@ end;
 
 function onTrigger(player,npc)
     if (player:sendGuild(5132,6,21,0)) then
-        player:showText(npc,ID.text.CHAUPIRE_SHOP_DIALOG);
+        -- player:showText(npc,ID.text.CHAUPIRE_SHOP_DIALOG);
     end
 end;
 
