@@ -824,8 +824,8 @@ void CMobEntity::DropItems(CCharEntity* PChar)
             for (int16 roll = 0; roll < maxRolls; ++roll)
             {
                 int rand = tpzrand::GetRandomNumber(1000);
-                int rate = item.DropRate * map_config.drop_rate_multiplier + bonus;
-                ShowDebug("ItemID: %u - Roll: %i - Rate: %i\n", item.ItemID, rand, rate);
+                float rate = item.DropRate * map_config.drop_rate_multiplier + bonus;
+                ShowDebug("ItemID: %u - Roll: %i - Rate: %i\n", item.ItemID, rand, (int)rate);
                 if (item.DropRate > 0 && rand < rate)
                 {
                     if (AddItemToPool(item.ItemID, ++dropCount))

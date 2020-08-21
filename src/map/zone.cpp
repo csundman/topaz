@@ -883,7 +883,7 @@ void CZone::CharZoneIn(CCharEntity* PChar)
 
     //-----Custom code to increase movement speed in non-threatening environments
 
-    if (m_zoneID >= 230 && m_zoneID <= 252)
+    if (m_zoneType == ZONETYPE_CITY)
     {
         PChar->speed = 70;
     }
