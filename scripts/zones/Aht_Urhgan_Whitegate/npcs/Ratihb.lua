@@ -19,6 +19,8 @@ function onTrigger(player,npc)
 
     if luckOfTheDraw == QUEST_AVAILABLE and player:getMainLvl() >= ADVANCED_JOB_LEVEL then
         player:startEvent(547)
+	elseif player:getQuestStatus(AHT_URHGAN, tpz.quest.id.ahtUrhgan.THREE_MEN_AND_A_CLOSET) == QUEST_ACCEPTED and player:getCharVar("threemenandaclosetCS") == 4 then
+		player:startEvent(840)
     elseif luckOfTheDraw == QUEST_COMPLETED and player:getCharVar("LuckOfTheDraw") == 5 then
         player:startEvent(552)
     elseif player:getCharVar("EquippedforAllOccasions") == 4 and player:getCharVar("LuckOfTheDraw") == 6 then
@@ -43,5 +45,7 @@ function onEventFinish(player,csid,option)
         npcUtil.completeQuest(player, AHT_URHGAN, tpz.quest.id.ahtUrhgan.EQUIPPED_FOR_ALL_OCCASIONS, {item = 18702, var = {"EquippedforAllOccasions", "LuckOfTheDraw"}})
     elseif csid == 604 then
         npcUtil.giveKeyItem(player, tpz.ki.LIFE_FLOAT)
+	elseif csid == 840 then
+		player:setCharVar("threemenandaclosetCS", 5)
     end
 end
