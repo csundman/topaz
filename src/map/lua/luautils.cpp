@@ -80,6 +80,7 @@
 #include "../ai/states/magic_state.h"
 #include <optional>
 #include "../battlefield.h"
+#include "../packets/char_emotion.h"
 
 namespace luautils
 {
@@ -146,6 +147,8 @@ namespace luautils
         lua_register(LuaHandle, "NearLocation", luautils::nearLocation);
         lua_register(LuaHandle, "terminate", luautils::terminate);
 
+        lua_register(LuaHandle, "GetHealingTickDelay", luautils::GetHealingTickDelay);
+        lua_register(LuaHandle, "GetItem", luautils::GetItem);
         lua_register(LuaHandle, "getAbility", luautils::getAbility);
         lua_register(LuaHandle, "getSpell", luautils::getSpell);
 
@@ -184,9 +187,13 @@ namespace luautils
 
     int32 free()
     {
-        ShowStatus(CL_WHITE"luautils::free" CL_RESET":lua free...");
-        lua_close(LuaHandle);
-        ShowMessage("\t - " CL_GREEN"[OK]" CL_RESET"\n");
+        if(LuaHandle)
+        {
+            ShowStatus(CL_WHITE"luautils::free" CL_RESET":lua free...");
+            lua_close(LuaHandle);
+            LuaHandle = nullptr;
+            ShowMessage("\t - " CL_GREEN"[OK]" CL_RESET"\n");
+        }
         return 0;
     }
 
@@ -336,8 +343,8 @@ namespace luautils
 
             if (!lua_isnil(L, 2) && lua_isuserdata(L, 2))
             {
-                CLuaBaseEntity* PLuaBaseEntity = Lunar<CLuaBaseEntity>::check(L, 2);
-                PInstance = PLuaBaseEntity->GetBaseEntity()->PInstance;
+                CLuaInstance* PLuaInstance = Lunar<CLuaInstance>::check(L, 2);
+                PInstance = PLuaInstance->GetInstance();
             }
 
             CBaseEntity* PNpc = nullptr;
@@ -392,7 +399,7 @@ namespace luautils
             }
             if (PInstance)
             {
-                PInstance->GetEntity(mobid & 0xFFF, TYPE_MOB | TYPE_PET);
+                PMob = PInstance->GetEntity(mobid & 0xFFF, TYPE_MOB | TYPE_PET);
             }
             else
             {
@@ -700,8 +707,8 @@ namespace luautils
         if (!lua_isnil(L, 1) && lua_isnumber(L, 1))
         {
             int32 offset = (int32)lua_tointeger(L, 1);
-
-            CVanaTime::getInstance()->setCustomOffset(offset);
+            int32 custom = CVanaTime::getInstance()->getCustomEpoch();
+            CVanaTime::getInstance()->setCustomEpoch((custom ? custom : VTIME_BASEDATE) - offset);
 
             lua_pushboolean(L, true);
             return 1;
@@ -1495,8 +1502,7 @@ namespace luautils
 
     int32 OnEventUpdate(CCharEntity* PChar, uint16 eventID, uint32 result, uint16 extras)
     {
-        int32 oldtop = lua_gettop(LuaHandle);
-
+        lua_gettop(LuaHandle);
         lua_pushnil(LuaHandle);
         lua_setglobal(LuaHandle, "onEventUpdate");
 
@@ -2688,7 +2694,7 @@ namespace luautils
 
         lua_prepscript("scripts/zones/%s/mobs/%s.lua", PMob->loc.zone->GetName(), PMob->GetName());
 
-        if (PTarget->objtype != TYPE_PET && PTarget->objtype != TYPE_MOB)
+        if (PTarget->objtype == TYPE_PC)
         {
             ((CCharEntity*)PTarget)->m_event.reset();
             ((CCharEntity*)PTarget)->m_event.Target = PMob;
@@ -2911,8 +2917,9 @@ namespace luautils
             Lunar<CLuaBaseEntity>::push(LuaHandle, &LuaMobEntity);
             lua_pushnil(LuaHandle);
             lua_pushnil(LuaHandle);
+            lua_pushboolean(LuaHandle, true);
 
-            if (lua_pcall(LuaHandle, 3, 0, 0))
+            if (lua_pcall(LuaHandle, 4, 0, 0))
             {
                 ShowError("luautils::onMobDeath: %s\n", lua_tostring(LuaHandle, -1));
                 lua_pop(LuaHandle, 1);
@@ -4244,6 +4251,52 @@ namespace luautils
         return 0;
     }
 
+    int32 GetHealingTickDelay(lua_State* L) {
+        lua_pushnumber(L, map_config.healing_tick_delay);
+        return 1;
+    }
+
+    /***************************************************************************
+    *                                                                          *
+    *  Creates an item object of the type specified by the itemID.             *
+    *  This item is ephemeral, and doesn't exist in-game but can and should    *
+    *  be used to lookup item information or access item functions when only   *
+    *  the ItemID is known.                                                    *
+    *                                                                          *
+    *  ## These items should be used to READ ONLY!                             *
+    *  ## Should lua functions be written which modify items, care must be     *
+    *     taken to ensure these are NEVER modified.                            *
+    *                                                                          *
+    *  example: local item = GetItem(16448)                                    *
+    *           item:GetName()                 --Bronze Dagger                 *
+    *           item:isTwoHanded()             --False                         *
+    *                                                                          *
+    ***************************************************************************/
+
+    int32 GetItem(lua_State* L)
+    {
+        TPZ_DEBUG_BREAK_IF(lua_isnil(L, -1) || !lua_isnumber(L, -1));
+
+        uint32 id = static_cast<uint32>(lua_tointeger(L, 1));
+        CItem* PItem = itemutils::GetItemPointer(id);
+        if (PItem)
+        {
+            lua_getglobal(L, CLuaItem::className);
+            lua_pushstring(L, "new");
+            lua_gettable(L, -2);
+            lua_insert(L, -2);
+            lua_pushlightuserdata(L, (void*)PItem);
+
+            if (lua_pcall(L, 2, 1, 0))
+            {
+                return 0;
+            }
+            return 1;
+        }
+        lua_pushnil(L);
+        return 1;
+    }
+
     int32 getAbility(lua_State* L)
     {
         if (!lua_isnil(L, 1) && lua_isnumber(L, 1))
@@ -4287,7 +4340,6 @@ namespace luautils
 
         // Clear old messages..
         map_config.server_message.clear();
-        map_config.server_message_fr.clear();
 
         // Load the English server message..
         fp = fopen("./conf/server_message.conf", "rb");
@@ -4305,27 +4357,11 @@ namespace luautils
 
         fclose(fp);
 
-        // Load the French server message..
-        fp = fopen("./conf/server_message_fr.conf", "rb");
-        if (fp == nullptr)
-        {
-            ShowError("Could not read English server message from: ./conf/server_message_fr.conf\n");
-            return 1;
-        }
-
-        while (fgets((char*)line, sizeof(line), fp))
-        {
-            string_t sline((const char*)line);
-            map_config.server_message_fr += sline;
-        }
-
-        fclose(fp);
-
         // Ensure both messages have nullptr terminates..
         if (map_config.server_message.at(map_config.server_message.length() - 1) != 0x00)
+        {
             map_config.server_message += (char)0x00;
-        if (map_config.server_message_fr.at(map_config.server_message_fr.length() - 1) != 0x00)
-            map_config.server_message_fr += (char)0x00;
+        }
 
         return 0;
     }
@@ -4506,6 +4542,26 @@ namespace luautils
         {
             ShowError("luautils::onFurnitureRemoved: %s\n", lua_tostring(LuaHandle, -1));
             lua_pop(LuaHandle, 1);
+        }
+    }
+
+    void OnPlayerEmote(CCharEntity* PChar, Emote EmoteID)
+    {
+        lua_prepscript("scripts/globals/player.lua");
+
+        if (prepFile(File, "onPlayerEmote"))
+            return;
+
+        CLuaBaseEntity LuaBaseEntity(PChar);
+        Lunar<CLuaBaseEntity>::push(LuaHandle, &LuaBaseEntity);
+
+        lua_pushinteger(LuaHandle, (uint8)EmoteID);
+
+        if (lua_pcall(LuaHandle, 2, 0, 0))
+        {
+            ShowError("luautils::onEmote: %s\n", lua_tostring(LuaHandle, -1));
+            lua_pop(LuaHandle, 1);
+            return;
         }
     }
 
