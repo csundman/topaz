@@ -1,4 +1,4 @@
-/*
+﻿/*
 ===========================================================================
 
 Copyright (c) 2010-2015 Darkstar Dev Teams
@@ -165,6 +165,8 @@ void PrintPacket(CBasicPacket data)
 
     for (size_t y = 0; y < data.length(); y++)
     {
+        // TODO: -Wno-restrict - undefined behavior to print and write src into dest
+        // TODO: -Wno-format-overflow - writing between 4 and 53 bytes into destination of 50
         sprintf(message, "%s %02hx", message, *((uint8*)data[(const int)y]));
         if (((y + 1) % 16) == 0)
         {
@@ -701,9 +703,7 @@ void SmallPacket0x01A(map_session_data_t* session, CCharEntity* PChar, CBasicPac
     case 0x09: // jobability
     {
         uint16 JobAbilityID = data.ref<uint16>(0x0C);
-        //if ((JobAbilityID < 496 && !charutils::hasAbility(PChar, JobAbilityID - 16)) || JobAbilityID >= 496 && !charutils::hasPetAbility(PChar, JobAbilityID - 512))
-        //    return;
-        PChar->PAI->Ability(TargID, JobAbilityID - 16);
+        PChar->PAI->Ability(TargID, JobAbilityID);
     }
     break;
     case 0x0B: // homepoint
@@ -1248,6 +1248,17 @@ void SmallPacket0x034(map_session_data_t* session, CCharEntity* PChar, CBasicPac
 
     if (PTarget != nullptr && PTarget->id == PChar->TradePending.id)
     {
+        if (!PChar->UContainer->IsSlotEmpty(tradeSlotID))
+        {
+            CItem* PCurrentSlotItem = PChar->UContainer->GetItem(tradeSlotID);
+            if (quantity != 0)
+            {
+                ShowError(CL_RED"SmallPacket0x034: Player %s trying to update trade quantity of a RESERVED item! [Item: %i | Trade Slot: %i] \n" CL_RESET, PChar->GetName(), PCurrentSlotItem->getID(), tradeSlotID);
+            }
+            PCurrentSlotItem->setReserve(0);
+            PChar->UContainer->ClearSlot(tradeSlotID);
+        }
+
         CItem* PItem = PChar->getStorage(LOC_INVENTORY)->GetItem(invSlotID);
         // We used to disable Rare/Ex items being added to the container, but that is handled properly else where now
         if (PItem != nullptr && PItem->getID() == itemID && quantity + PItem->getReserve() <= PItem->getQuantity())
@@ -1262,9 +1273,32 @@ void SmallPacket0x034(map_session_data_t* session, CCharEntity* PChar, CBasicPac
             // If item count is zero.. remove from container..
             if (quantity > 0)
             {
-                ShowNotice(CL_CYAN"%s->%s trade updating trade slot id %d with item %s, quantity %d\n" CL_RESET, PChar->GetName(), PTarget->GetName(), tradeSlotID, PItem->getName(), quantity);
-                PItem->setReserve(quantity + PItem->getReserve());
-                PChar->UContainer->SetItem(tradeSlotID, PItem);
+                if (PItem->isType(ITEM_LINKSHELL))
+                {
+                    CItemLinkshell* PItemLinkshell = static_cast<CItemLinkshell*>(PItem);
+                    CItemLinkshell* PItemLinkshell1 = (CItemLinkshell*)PChar->getEquip(SLOT_LINK1);
+                    CItemLinkshell* PItemLinkshell2 = (CItemLinkshell*)PChar->getEquip(SLOT_LINK2);
+                    if ( (!PItemLinkshell1 && !PItemLinkshell2) ||
+                        ((!PItemLinkshell1 || PItemLinkshell1->GetLSID() != PItemLinkshell->GetLSID()) &&
+                        (!PItemLinkshell2 || PItemLinkshell2->GetLSID() != PItemLinkshell->GetLSID())) )
+                    {
+                        PChar->pushPacket(new CMessageStandardPacket(MsgStd::LinkshellEquipBeforeUsing));
+                        PItem->setReserve(0);
+                        PChar->UContainer->SetItem(tradeSlotID, nullptr);
+                    }
+                    else
+                    {
+                        ShowNotice(CL_CYAN"%s->%s trade updating trade slot id %d with item %s, quantity %d\n" CL_RESET, PChar->GetName(), PTarget->GetName(), tradeSlotID, PItem->getName(), quantity);
+                        PItem->setReserve(quantity + PItem->getReserve());
+                        PChar->UContainer->SetItem(tradeSlotID, PItem);
+                    }
+                }
+                else
+                {
+                    ShowNotice(CL_CYAN"%s->%s trade updating trade slot id %d with item %s, quantity %d\n" CL_RESET, PChar->GetName(), PTarget->GetName(), tradeSlotID, PItem->getName(), quantity);
+                    PItem->setReserve(quantity + PItem->getReserve());
+                    PChar->UContainer->SetItem(tradeSlotID, PItem);
+                }
             }
             else
             {
@@ -1306,14 +1340,22 @@ void SmallPacket0x036(map_session_data_t* session, CCharEntity* PChar, CBasicPac
 
         for (int32 slotID = 0; slotID < numItems; ++slotID)
         {
-            uint8  invSlotID = data.ref<uint8>(0x30 + slotID);
+            uint8 invSlotID = data.ref<uint8>(0x30 + slotID);
             uint32 Quantity = data.ref<uint32>(0x08 + slotID * 4);
 
             CItem* PItem = PChar->getStorage(LOC_INVENTORY)->GetItem(invSlotID);
 
-            if (PItem != nullptr && PItem->getQuantity() >= Quantity)
+            if ((PItem == nullptr) || (PItem->isSubType(ITEM_LOCKED)) || (PItem->getQuantity() < Quantity))
+            {
+                ShowError(CL_RED "SmallPacket0x036: Player %s trying to trade invalid item [to NPC]! \n" CL_RESET, PChar->GetName());
+
+                // Leave the items locked so people can't use invalid trade attempts to unlock arbitrary inventory slots
+                return;
+            }
+            else
             {
                 PChar->TradeContainer->setItem(slotID, PItem->getID(), invSlotID, Quantity, PItem);
+                PItem->setSubType(ITEM_LOCKED);
             }
         }
 
@@ -1549,9 +1591,9 @@ void SmallPacket0x04B(map_session_data_t* session, CCharEntity* PChar, CBasicPac
     // uint32  msg_request_len = data.ref<uint32>(0x14); // The total requested size of send to the client..
 
     if (msg_language == 0x02)
+    {
         PChar->pushPacket(new CServerMessagePacket(map_config.server_message, msg_language, msg_timestamp, msg_offset));
-    else
-        PChar->pushPacket(new CServerMessagePacket(map_config.server_message_fr, msg_language, msg_timestamp, msg_offset));
+    }
 
     PChar->pushPacket(new CCharSyncPacket(PChar));
 
@@ -1587,6 +1629,13 @@ void SmallPacket0x04D(map_session_data_t* session, CCharEntity* PChar, CBasicPac
     {
         return;
     }
+
+    if (!zoneutils::IsResidentialArea(PChar) && PChar->m_GMlevel == 0 && !PChar->loc.zone->CanUseMisc(MISC_AH) && !PChar->loc.zone->CanUseMisc(MISC_MOGMENU))
+    {
+        ShowDebug(CL_CYAN"%s is trying to use the delivery box in a disallowed zone [%s]\n" CL_RESET, PChar->GetName(), PChar->loc.zone->GetName());
+        return;
+    }
+
 
     // 0x01 - Send old items..
     // 0x02 - Add items to be sent..
@@ -2238,7 +2287,7 @@ void SmallPacket0x04E(map_session_data_t* session, CCharEntity* PChar, CBasicPac
     // 0x0A - Retrieve List of Items Sold By Player
     // 0x0B - Proof Of Purchase
     // 0x0E - Purchasing Items
-    // 0x0С - Cancel Sale
+    // 0x0C - Cancel Sale
     // 0x0D - Update Sale List By Player
 
     switch (action)
@@ -2346,9 +2395,22 @@ void SmallPacket0x04E(map_session_data_t* session, CCharEntity* PChar, CBasicPac
                 return;
             }
 
-            if (PChar->m_ah_history.size() >= 7)
+            // Get the current number of items the player has for sale
+            const char* Query = "SELECT COUNT(*) FROM auction_house WHERE seller = %u AND sale=0;";
+
+            int32 ret = Sql_Query(SqlHandle, Query, PChar->id);
+            uint32 ah_listings = 0;
+
+            if (ret != SQL_ERROR && Sql_NumRows(SqlHandle) != 0)
             {
-                // ShowDebug(CL_CYAN"%s already has 7 items on the AH\n" CL_RESET,PChar->GetName());
+                Sql_NextRow(SqlHandle);
+                ah_listings = (uint32)Sql_GetIntData(SqlHandle, 0);
+                // ShowDebug(CL_CYAN"%s has %d outstanding listings before placing this one." CL_RESET, PChar->GetName(), ah_listings);
+            }
+
+            if (map_config.ah_list_limit && ah_listings >= map_config.ah_list_limit)
+            {
+                // ShowDebug(CL_CYAN"%s already has %d items on the AH\n" CL_RESET,PChar->GetName(), ah_listings);
                 PChar->pushPacket(new CAuctionHousePacket(action, 197, 0, 0)); // Failed to place up
                 return;
             }
@@ -2372,7 +2434,7 @@ void SmallPacket0x04E(map_session_data_t* session, CCharEntity* PChar, CBasicPac
             charutils::UpdateItem(PChar, LOC_INVENTORY, 0, -(int32)auctionFee); // Deduct AH fee
 
             PChar->pushPacket(new CAuctionHousePacket(action, 1, 0, 0)); // Merchandise put up on auction msg
-            PChar->pushPacket(new CAuctionHousePacket(0x0C, (uint8)PChar->m_ah_history.size(), PChar)); // Inform history of slot
+            PChar->pushPacket(new CAuctionHousePacket(0x0C, (uint8)ah_listings, PChar)); // Inform history of slot
         }
     }
     break;
@@ -2500,10 +2562,12 @@ void SmallPacket0x050(map_session_data_t* session, CCharEntity* PChar, CBasicPac
     uint8 containerID = data.ref<uint8>(0x06);     // container id
 
     if (containerID != LOC_INVENTORY && containerID != LOC_WARDROBE && containerID != LOC_WARDROBE2 && containerID != LOC_WARDROBE3 && containerID != LOC_WARDROBE4)
+    {
         if (equipSlotID != 16 && equipSlotID != 17)
             return;
         else if (containerID != LOC_MOGSATCHEL && containerID != LOC_MOGSACK && containerID != LOC_MOGCASE)
             return;
+    }
 
     charutils::EquipItem(PChar, slotID, equipSlotID, containerID); //current
     charutils::SaveCharEquip(PChar);
@@ -2646,9 +2710,10 @@ void SmallPacket0x053(map_session_data_t* session, CCharEntity* PChar, CBasicPac
 
 void SmallPacket0x058(map_session_data_t* session, CCharEntity* PChar, CBasicPacket data)
 {
-    // uint16 skillID = data.ref<uint16>(0x04);
-    // uint16 skillLevel = data.ref<uint16>(0x06);
-    //PChar->pushPacket(new CSynthSuggestionPacket(recipeID));
+    uint16 skillID    = data.ref<uint16>(0x04);
+    uint16 skillLevel = data.ref<uint16>(0x06);
+
+    PChar->pushPacket(new CSynthSuggestionPacket(skillID, skillLevel));
 }
 
 /************************************************************************
@@ -2692,9 +2757,9 @@ void SmallPacket0x05A(map_session_data_t* session, CCharEntity* PChar, CBasicPac
 
 void SmallPacket0x05B(map_session_data_t* session, CCharEntity* PChar, CBasicPacket data)
 {
-    auto CharID = data.ref<uint32>(0x04);
+    //auto CharID = data.ref<uint32>(0x04);
     auto Result = data.ref<uint32>(0x08);
-    auto ZoneID = data.ref<uint16>(0x10);
+    //auto ZoneID = data.ref<uint16>(0x10);
     auto EventID = data.ref<uint16>(0x12);
 
     PrintPacket(data);
@@ -2729,9 +2794,9 @@ void SmallPacket0x05B(map_session_data_t* session, CCharEntity* PChar, CBasicPac
 
 void SmallPacket0x05C(map_session_data_t* session, CCharEntity* PChar, CBasicPacket data)
 {
-    auto CharID = data.ref<uint32>(0x10);
+    //auto CharID = data.ref<uint32>(0x10);
     auto Result = data.ref<uint32>(0x14);
-    auto ZoneID = data.ref<uint16>(0x18);
+    //auto ZoneID = data.ref<uint16>(0x18);
 
     auto EventID = data.ref<uint16>(0x1A);
 
@@ -2789,19 +2854,27 @@ void SmallPacket0x05D(map_session_data_t* session, CCharEntity* PChar, CBasicPac
 
     // Invalid Emote ID.
     if (EmoteID < Emote::POINT || EmoteID > Emote::JOB)
+    {
         return;
+    }
 
     // Invalid Emote Mode.
     if (emoteMode < EmoteMode::ALL || emoteMode > EmoteMode::MOTION)
+    {
         return;
+    }
 
     const auto extra = data.ref<uint16>(0x0C);
 
     // Attempting to use locked job emote.
     if (EmoteID == Emote::JOB && extra && !(PChar->jobs.unlocked & (1 << (extra - 0x1E))))
+    {
         return;
-
+    }
+    
     PChar->loc.zone->PushPacket(PChar, CHAR_INRANGE_SELF, new CCharEmotionPacket(PChar, TargetID, TargetIndex, EmoteID, emoteMode, extra));
+
+    luautils::OnPlayerEmote(PChar, EmoteID);
 }
 
 /************************************************************************
@@ -3654,15 +3727,15 @@ void SmallPacket0x083(map_session_data_t* session, CCharEntity* PChar, CBasicPac
     uint8  quantity = data.ref<uint8>(0x04);
     uint8  shopSlotID = data.ref<uint8>(0x0A);
 
-    // Prevent users from buying from slots higher than 15.. (Prevents appraise duping..)
-    if (shopSlotID > PChar->Container->getSize() - 1)
+    // Prevent users from buying from invalid container slots
+    if (shopSlotID > PChar->Container->getExSize() - 1)
     {
-        ShowWarning(CL_YELLOW"User '%s' attempting to buy vendor item from an invalid slot!" CL_RESET, PChar->GetName());
+        ShowError(CL_RED"User '%s' attempting to buy vendor item from an invalid slot!\n" CL_RESET, PChar->GetName());
         return;
     }
 
     uint16 itemID = PChar->Container->getItemID(shopSlotID);
-    uint32 price = PChar->Container->getQuantity(shopSlotID); // здесь мы сохранили стоимость предмета
+    uint32 price = PChar->Container->getQuantity(shopSlotID); // We used the "quantity" to store the item's sale price
 
     CItem* PItem = itemutils::GetItemPointer(itemID);
     if (PItem == nullptr)
@@ -3717,7 +3790,8 @@ void SmallPacket0x084(map_session_data_t* session, CCharEntity* PChar, CBasicPac
             !(PItem->getFlag() & ITEM_FLAG_NOSALE))
         {
             quantity = std::min(quantity, PItem->getQuantity());
-            PChar->Container->setItem(PChar->Container->getSize() - 1, itemID, slotID, quantity);
+            // Store item-to-sell in the last slot of the shop container
+            PChar->Container->setItem(PChar->Container->getExSize(), itemID, slotID, quantity);
             PChar->pushPacket(new CShopAppraisePacket(slotID, PItem->getBasePrice()));
         }
         return;
@@ -3733,9 +3807,10 @@ void SmallPacket0x084(map_session_data_t* session, CCharEntity* PChar, CBasicPac
 
 void SmallPacket0x085(map_session_data_t* session, CCharEntity* PChar, CBasicPacket data)
 {
-    uint32 quantity = PChar->Container->getQuantity(PChar->Container->getSize() - 1);
-    uint16 itemID = PChar->Container->getItemID(PChar->Container->getSize() - 1);
-    uint8  slotID = PChar->Container->getInvSlotID(PChar->Container->getSize() - 1);
+    // Retrieve item-to-sell from last slot of the shop's container
+    uint32 quantity = PChar->Container->getQuantity(PChar->Container->getExSize());
+    uint16 itemID = PChar->Container->getItemID(PChar->Container->getExSize());
+    uint8  slotID = PChar->Container->getInvSlotID(PChar->Container->getExSize());
 
     CItem* gil = PChar->getStorage(LOC_INVENTORY)->GetItem(0);
     CItem* PItem = PChar->getStorage(LOC_INVENTORY)->GetItem(slotID);
@@ -4418,12 +4493,12 @@ void SmallPacket0x0C4(map_session_data_t* session, CCharEntity* PChar, CBasicPac
                     Sql_Query(SqlHandle, Query, extra, PChar->id, PItemLinkshell->getLocationID(), PItemLinkshell->getSlotID());
                     PChar->pushPacket(new CInventoryItemPacket(PItemLinkshell, PItemLinkshell->getLocationID(), PItemLinkshell->getSlotID()));
                     PChar->pushPacket(new CInventoryFinishPacket());
-                    PChar->pushPacket(new CMessageSystemPacket(0, 0, 110)); // That linkshell group no longer exists. This item is unusable.
+                    PChar->pushPacket(new CMessageStandardPacket(MsgStd::LinkshellNoLongerExists));
                     return;
                 }
                 if (PItemLinkshell->GetLSID() == 0)
                 {
-                    PChar->pushPacket(new CMessageSystemPacket(0, 0, 110)); // That linkshell group no longer exists. This item is unusable.
+                    PChar->pushPacket(new CMessageStandardPacket(MsgStd::LinkshellNoLongerExists));
                     return;
                 }
                 if (OldLinkshell != nullptr) // switching linkshell group
@@ -4935,7 +5010,7 @@ void SmallPacket0x0E2(map_session_data_t* session, CCharEntity* PChar, CBasicPac
         break;
         }
     }
-    PChar->pushPacket(new CMessageSystemPacket(0, 0, 158)); // You do not have access to those linkshell commands.
+    PChar->pushPacket(new CMessageStandardPacket(MsgStd::LinkshellNoAccess));
     return;
 }
 
@@ -5786,6 +5861,16 @@ void SmallPacket0x106(map_session_data_t* session, CCharEntity* PChar, CBasicPac
     if (PTarget == nullptr || PTarget->id != PChar->BazaarID.id)
         return;
 
+    // Validate purchase quantity..
+    if (Quantity < 1)
+    {
+        // Exploit attempt..
+        ShowError(
+            CL_RED "Player %s purchasing invalid quantity %u from Player %s bazaar! \n" CL_RESET,
+            PChar->GetName(), Quantity, PTarget->GetName());
+        return;
+    }
+
     CItemContainer* PBazaar = PTarget->getStorage(LOC_INVENTORY);
     CItemContainer* PBuyerInventory = PChar->getStorage(LOC_INVENTORY);
 
@@ -5808,29 +5893,21 @@ void SmallPacket0x106(map_session_data_t* session, CCharEntity* PChar, CBasicPac
         return;
     }
 
-    // Validate this player can afford said item..
-    if (PCharGil->getQuantity() < PBazaarItem->getCharPrice())
+    if ((PBazaarItem->getCharPrice() != 0) && (PBazaarItem->getQuantity() >= Quantity))
     {
-        // Exploit attempt..
-        ShowError(CL_RED"Bazaar purchase exploit attempt by: %s\n" CL_RESET, PChar->GetName());
-        PChar->pushPacket(new CBazaarPurchasePacket(PTarget, false));
-        return;
-    }
+        uint32 Price = (PBazaarItem->getCharPrice() * Quantity);
+        uint32 PriceWithTax = (PChar->loc.zone->GetTax() * Price) / 10000 + Price;
 
-    if ((PBazaarItem != nullptr) && (PBazaarItem->getCharPrice() != 0) && (PBazaarItem->getQuantity() >= Quantity))
-    {
-        CItem* PItem = itemutils::GetItem(PBazaarItem);
-
-        // Validate purchase quantity..
-        if (Quantity < 1)
+        // Validate this player can afford said item
+        if (PCharGil->getQuantity() < PriceWithTax)
         {
-            // Exploit attempt..
-            ShowError(
-                CL_RED"Player %s purchasing invalid quantity %u of itemID %u from Player %s bazaar! \n" CL_RESET,
-                PChar->GetName(), Quantity, PItem->getID(), PTarget->GetName()
-            );
+            // Exploit attempt
+            ShowError(CL_RED "Bazaar purchase exploit attempt by: %s\n" CL_RESET, PChar->GetName());
+            PChar->pushPacket(new CBazaarPurchasePacket(PTarget, false));
             return;
         }
+
+        CItem* PItem = itemutils::GetItem(PBazaarItem);
 
         PItem->setCharPrice(0);
         PItem->setQuantity(Quantity);
@@ -5839,11 +5916,8 @@ void SmallPacket0x106(map_session_data_t* session, CCharEntity* PChar, CBasicPac
         if (charutils::AddItem(PChar, LOC_INVENTORY, PItem) == ERROR_SLOTID)
             return;
 
-        uint32 Price1 = (PBazaarItem->getCharPrice() * Quantity);
-        uint32 Price2 = (PChar->loc.zone->GetTax() * Price1) / 10000 + Price1;
-
-        charutils::UpdateItem(PChar, LOC_INVENTORY, 0, -(int32)Price2);
-        charutils::UpdateItem(PTarget, LOC_INVENTORY, 0, Price1);
+        charutils::UpdateItem(PChar, LOC_INVENTORY, 0, -(int32)PriceWithTax);
+        charutils::UpdateItem(PTarget, LOC_INVENTORY, 0, Price);
 
         PChar->pushPacket(new CBazaarPurchasePacket(PTarget, true));
 
@@ -5931,6 +6005,12 @@ void SmallPacket0x10A(map_session_data_t* session, CCharEntity* PChar, CBasicPac
     uint32 price = data.ref<uint32>(0x08);
 
     CItem* PItem = PChar->getStorage(LOC_INVENTORY)->GetItem(slotID);
+
+    if (PItem->getReserve() > 0)
+    {
+        ShowError(CL_RED"SmallPacket0x10A: Player %s trying to bazaar a RESERVED item! [Item: %i | Slot ID: %i] \n" CL_RESET, PChar->GetName(), PItem->getID(), slotID);
+        return;
+    }
 
     if ((PItem != nullptr) && !(PItem->getFlag() & ITEM_FLAG_EX) && (!PItem->isSubType(ITEM_LOCKED) || PItem->getCharPrice() != 0))
     {

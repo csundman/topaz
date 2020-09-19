@@ -1,4 +1,4 @@
-/*
+﻿/*
 ===========================================================================
 
   Copyright (c) 2010-2015 Darkstar Dev Teams
@@ -82,7 +82,7 @@ std::array<std::array<uint8, MAX_JOBTYPE>, MAX_SKILLTYPE> g_SkillRanks;
 std::array<std::array<uint16, MAX_SKILLCHAIN_COUNT + 1>, MAX_SKILLCHAIN_LEVEL + 1> g_SkillChainDamageModifiers;
 
 std::array<CWeaponSkill*, MAX_WEAPONSKILL_ID> g_PWeaponSkillList;           // Holds all Weapon skills
-std::array<CMobSkill*, 4096> g_PMobSkillList;                   // List of mob skills
+std::array<CMobSkill*, MAX_MOBSKILL_ID> g_PMobSkillList;                   // List of mob skills
 
 std::array<std::list<CWeaponSkill*>, MAX_SKILLTYPE> g_PWeaponSkillsList;
 std::unordered_map<uint16, std::vector<uint16>>  g_PMobSkillLists;  // List of mob skills defined from mob_skill_lists.sql
@@ -271,6 +271,8 @@ namespace battleutils
         for (int32 SkillId = 0; SkillId < MAX_WEAPONSKILL_ID; ++SkillId)
         {
             delete g_PWeaponSkillList[SkillId];
+            g_PWeaponSkillList[SkillId] = nullptr;
+
         }
     }
 
@@ -279,9 +281,10 @@ namespace battleutils
     ************************************************************************/
     void FreeMobSkillList()
     {
-        for (auto mobskill : g_PMobSkillList)
+        for (auto& mobskill : g_PMobSkillList)
         {
             delete mobskill;
+            mobskill = nullptr;
         }
     }
 
@@ -704,9 +707,10 @@ namespace battleutils
             // Check for status effect proc. Todo: move to scripts soon™ after item additionalEffect refactor Teo is working on
             HandleSpikesStatusEffect(PAttacker, PDefender, Action);
 
-            if (PAttacker->objtype == TYPE_MOB && ((CMobEntity*)PAttacker)->m_HiPCLvl < PDefender->GetMLevel())
+            battleutils::DirtyExp(PAttacker, PDefender);
+            if (PAttacker->isDead())
             {
-                ((CMobEntity*)PAttacker)->m_HiPCLvl = PDefender->GetMLevel();
+                battleutils::ClaimMob(PAttacker, PDefender);
             }
             return true;
         }
@@ -1479,7 +1483,7 @@ namespace battleutils
         if (isCritical)
         {
             pdif *= 1.25;
-            int16 criticaldamage = PAttacker->getMod(Mod::CRIT_DMG_INCREASE) - PDefender->getMod(Mod::CRIT_DEF_BONUS);
+            int16 criticaldamage = PAttacker->getMod(Mod::CRIT_DMG_INCREASE) + PAttacker->getMod(Mod::RANGED_CRIT_DMG_INCREASE) - PDefender->getMod(Mod::CRIT_DEF_BONUS);
             criticaldamage = std::clamp<int16>(criticaldamage, 0, 100);
             pdif *= ((100 + criticaldamage) / 100.0f);
         }
@@ -1722,6 +1726,10 @@ namespace battleutils
                     parryRate = parryRate + issekiganBonus;
                 }
 
+                // Inquartata grants a flat parry rate bonus.
+                int16 inquartataBonus = PDefender->getMod(Mod::INQUARTATA);
+                parryRate += inquartataBonus;
+
                 return parryRate;
             }
         }
@@ -1770,7 +1778,7 @@ namespace battleutils
     *                                                                       *
     ************************************************************************/
 
-    int32 TakePhysicalDamage(CBattleEntity* PAttacker, CBattleEntity* PDefender, PHYSICAL_ATTACK_TYPE physicalAttackType, int32 damage, bool isBlocked, uint8 slot, uint16 tpMultiplier, CBattleEntity* taChar, bool giveTPtoVictim, bool giveTPtoAttacker, bool isCounter)
+    int32 TakePhysicalDamage(CBattleEntity* PAttacker, CBattleEntity* PDefender, PHYSICAL_ATTACK_TYPE physicalAttackType, int32 damage, bool isBlocked, uint8 slot, uint16 tpMultiplier, CBattleEntity* taChar, bool giveTPtoVictim, bool giveTPtoAttacker, bool isCounter, bool isCovered, CBattleEntity* POriginalTarget)
     {
         auto weapon = GetEntityWeapon(PAttacker, (SLOTTYPE)slot);
         giveTPtoAttacker = giveTPtoAttacker && !PAttacker->StatusEffectContainer->HasStatusEffect(EFFECT_MEIKYO_SHISUI);
@@ -1800,11 +1808,11 @@ namespace battleutils
             if (isRanged)
             {
                 attackType = ATTACK_RANGED;
-                damage = RangedDmgTaken(PDefender, damage, damageType);
+                damage = RangedDmgTaken(PDefender, damage, damageType, isCovered);
             }
             else
             {
-                damage = PhysicalDmgTaken(PDefender, damage, damageType);
+                damage = PhysicalDmgTaken(PDefender, damage, damageType, isCovered);
             }
 
             //absorb mods are handled in the above functions, but they do not affect counters
@@ -1898,32 +1906,7 @@ namespace battleutils
         if (damage < 0)
             damage = -corrected;
 
-        auto PMob = dynamic_cast<CMobEntity*>(PDefender);
-        if (PAttacker->PMaster != nullptr)
-        {
-            if (!PMob || !PMob->CalledForHelp())
-            {
-                PDefender->m_OwnerID.id = PAttacker->PMaster->id;
-                PDefender->m_OwnerID.targid = PAttacker->PMaster->targid;
-            }
-            PDefender->updatemask |= UPDATE_STATUS;
-        }
-        else
-        {
-            if (PAttacker->objtype == TYPE_MOB && PAttacker->PMaster == nullptr)
-            {
-                //uncharmed mob still attacking another mob - dont allow 2 mobs to go purple
-            }
-            else
-            {
-                if (!PMob || !PMob->CalledForHelp())
-                {
-                    PDefender->m_OwnerID.id = PAttacker->id;
-                    PDefender->m_OwnerID.targid = PAttacker->targid;
-                }
-                PDefender->updatemask |= UPDATE_STATUS;
-            }
-        }
+        battleutils::ClaimMob(PDefender, PAttacker);
 
         if (damage > 0)
         {
@@ -1957,7 +1940,10 @@ namespace battleutils
                 case TYPE_PC:
                     if (PAttacker->objtype == TYPE_MOB)
                     {
-                        ((CMobEntity*)PAttacker)->PEnmityContainer->UpdateEnmityFromAttack(PDefender, damage);
+                        if (isCovered)
+                            ((CMobEntity*)PAttacker)->PEnmityContainer->UpdateEnmityFromCover(POriginalTarget, PDefender);
+                        else
+                            ((CMobEntity*)PAttacker)->PEnmityContainer->UpdateEnmityFromAttack(PDefender, damage);
                     }
                     break;
                 default:
@@ -2017,7 +2003,7 @@ namespace battleutils
                 float sBlowMult = ((100.0f - std::clamp((float)PAttacker->getMod(Mod::SUBTLE_BLOW), 0.0f, 50.0f)) / 100.0f);
 
                 //mobs hit get basetp+30 whereas pcs hit get basetp/3
-                if (PDefender->objtype == TYPE_PC)
+                if (PDefender->objtype == TYPE_PC || (PDefender->objtype == TYPE_PET && PDefender->PMaster && PDefender->PMaster->objtype == TYPE_PC))
                 {
                     PDefender->addTP((int16)(tpMultiplier * ((baseTp / 3) * sBlowMult * (1.0f + 0.01f * (float)((PDefender->getMod(Mod::STORETP) + getStoreTPbonusFromMerit(PAttacker))))))); //yup store tp counts on hits taken too!
                 }
@@ -2032,6 +2018,7 @@ namespace battleutils
             PAttacker->StatusEffectContainer->DelStatusEffectsByFlag(EFFECTFLAG_ATTACK);
 
         return damage;
+
     }
 
     /************************************************************************
@@ -2063,27 +2050,9 @@ namespace battleutils
         if (damage < 0)
             damage = -corrected;
 
-        auto PMob = dynamic_cast<CMobEntity*>(PDefender);
-        if (PDefender->objtype == TYPE_MOB)
+        if (PAttacker->objtype == TYPE_PC)
         {
-            if (PAttacker->PMaster != nullptr)
-            {
-                if (!PMob || !PMob->CalledForHelp())
-                {
-                    PDefender->m_OwnerID.id = PAttacker->PMaster->id;
-                    PDefender->m_OwnerID.targid = PAttacker->PMaster->targid;
-                }
-                PDefender->updatemask |= UPDATE_STATUS;
-            }
-            else
-            {
-                if (!PMob || !PMob->CalledForHelp())
-                {
-                    PDefender->m_OwnerID.id = PAttacker->id;
-                    PDefender->m_OwnerID.targid = PAttacker->targid;
-                }
-                PDefender->updatemask |= UPDATE_STATUS;
-            }
+            battleutils::ClaimMob(PDefender, PAttacker);
         }
 
         int16 standbyTp = 0;
@@ -2370,7 +2339,7 @@ namespace battleutils
 
         if (PAttacker->objtype == TYPE_PC)
         {
-            ratioCap = 2.25f;
+            ratioCap = isCritical ? 3 : 2.25f;
         }
         if (PAttacker->objtype == TYPE_MOB)
         {
@@ -2585,7 +2554,7 @@ namespace battleutils
                 else { num += 7; break; }
                 break;
         }
-        return std::min<uint8>(num, 8); // не более восьми ударов за одну атаку
+        return std::min<uint8>(num, 8); // No more than eight hits per attack
     }
 
     /************************************************************************
@@ -2838,54 +2807,57 @@ namespace battleutils
         {{SC_DARKNESS, SC_DARKNESS}, SC_DARKNESS_II},
 
         // Level 2 Pairs
-        {{SC_GRAVITATION, SC_DISTORTION}, SC_DARKNESS},
-        {{SC_GRAVITATION, SC_FRAGMENTATION}, SC_FRAGMENTATION},
-
         {{SC_DISTORTION, SC_GRAVITATION}, SC_DARKNESS},
-        {{SC_DISTORTION, SC_FUSION}, SC_FUSION},
+        {{SC_FRAGMENTATION, SC_GRAVITATION}, SC_FRAGMENTATION},
 
-        {{SC_FUSION, SC_GRAVITATION}, SC_GRAVITATION},
-        {{SC_FUSION, SC_FRAGMENTATION}, SC_LIGHT},
+        {{SC_GRAVITATION, SC_DISTORTION}, SC_DARKNESS},
+        {{SC_FUSION, SC_DISTORTION}, SC_FUSION},
 
-        {{SC_FRAGMENTATION, SC_DISTORTION}, SC_DISTORTION},
+        {{SC_GRAVITATION, SC_FUSION}, SC_GRAVITATION},
         {{SC_FRAGMENTATION, SC_FUSION}, SC_LIGHT},
 
+        {{SC_DISTORTION, SC_FRAGMENTATION}, SC_DISTORTION},
+        {{SC_FUSION, SC_FRAGMENTATION}, SC_LIGHT},
+
+			//Level 1 Pairs > Level 2 Skillchain
+
+        {{SC_SCISSION, SC_TRANSFIXION}, SC_DISTORTION},
+        {{SC_IMPACTION, SC_LIQUEFACTION}, SC_FUSION},
+        {{SC_COMPRESSION, SC_DETONATION}, SC_GRAVITATION},
+        {{SC_REVERBERATION, SC_INDURATION}, SC_FRAGMENTATION},
+
             // Level 1 Pairs
-        {{SC_TRANSFIXION, SC_COMPRESSION}, SC_COMPRESSION},
-        {{SC_TRANSFIXION, SC_SCISSION}, SC_DISTORTION},
-        {{SC_TRANSFIXION, SC_REVERBERATION}, SC_REVERBERATION},
+        {{SC_COMPRESSION, SC_TRANSFIXION}, SC_COMPRESSION},
+        {{SC_REVERBERATION, SC_TRANSFIXION}, SC_REVERBERATION},
 
-        {{SC_COMPRESSION, SC_TRANSFIXION}, SC_TRANSFIXION},
-        {{SC_COMPRESSION, SC_DETONATION}, SC_DETONATION},
+        {{SC_TRANSFIXION, SC_COMPRESSION}, SC_TRANSFIXION},
+        {{SC_DETONATION, SC_COMPRESSION}, SC_DETONATION},
 
-        {{SC_LIQUEFACTION, SC_SCISSION}, SC_SCISSION},
-        {{SC_LIQUEFACTION, SC_IMPACTION}, SC_FUSION},
+        {{SC_SCISSION, SC_LIQUEFACTION}, SC_SCISSION},
 
-        {{SC_SCISSION, SC_LIQUEFACTION}, SC_LIQUEFACTION},
-        {{SC_SCISSION, SC_REVERBERATION}, SC_REVERBERATION},
-        {{SC_SCISSION, SC_DETONATION}, SC_DETONATION},
+        {{SC_LIQUEFACTION, SC_SCISSION}, SC_LIQUEFACTION},
+        {{SC_REVERBERATION, SC_SCISSION}, SC_REVERBERATION},
+        {{SC_DETONATION, SC_SCISSION}, SC_DETONATION},
 
-        {{SC_REVERBERATION, SC_INDURATION}, SC_INDURATION},
-        {{SC_REVERBERATION, SC_IMPACTION}, SC_IMPACTION},
+        {{SC_INDURATION, SC_REVERBERATION}, SC_INDURATION},
+        {{SC_IMPACTION, SC_REVERBERATION}, SC_IMPACTION},
 
-        {{SC_DETONATION, SC_COMPRESSION}, SC_GRAVITATION},
-        {{SC_DETONATION, SC_SCISSION}, SC_SCISSION},
+        {{SC_SCISSION, SC_DETONATION}, SC_SCISSION},
 
-        {{SC_INDURATION, SC_COMPRESSION}, SC_COMPRESSION},
-        {{SC_INDURATION, SC_REVERBERATION}, SC_FRAGMENTATION},
-        {{SC_INDURATION, SC_IMPACTION}, SC_IMPACTION},
+        {{SC_COMPRESSION, SC_INDURATION}, SC_COMPRESSION},
+        {{SC_IMPACTION, SC_INDURATION}, SC_IMPACTION},
 
-        {{SC_IMPACTION, SC_LIQUEFACTION}, SC_LIQUEFACTION},
-        {{SC_IMPACTION, SC_DETONATION}, SC_DETONATION}
+        {{SC_LIQUEFACTION, SC_IMPACTION}, SC_LIQUEFACTION},
+        {{SC_DETONATION, SC_IMPACTION}, SC_DETONATION}
     };
 
     SKILLCHAIN_ELEMENT FormSkillchain(const std::list<SKILLCHAIN_ELEMENT>& resonance, const std::list<SKILLCHAIN_ELEMENT>& skill)
     {
-        for (auto& skill_element : skill)
+        for (auto& resonance_element : resonance)
         {
-            for (auto& resonance_element : resonance)
+            for (auto& skill_element : skill)
             {
-                if (auto skillchain = skillchain_map.find({ resonance_element, skill_element }); skillchain != skillchain_map.end())
+                if (auto skillchain = skillchain_map.find({ skill_element, resonance_element }); skillchain != skillchain_map.end())
                 {
                     return skillchain->second;
                 }
@@ -2893,6 +2865,7 @@ namespace battleutils
         }
         return SC_NONE;
     }
+
 
     SUBEFFECT GetSkillChainEffect(CBattleEntity* PDefender, uint8 primary, uint8 secondary, uint8 tertiary)
     {
@@ -3140,23 +3113,7 @@ namespace battleutils
 
         PDefender->takeDamage(damage, PAttacker, ATTACK_SPECIAL, appliedEle == ELEMENT_NONE ? DAMAGE_NONE : (DAMAGETYPE)(DAMAGE_ELEMENTAL + appliedEle));
 
-        auto PMob = dynamic_cast<CMobEntity*>(PDefender);
-        if (PAttacker->PMaster != nullptr)
-        {
-            if (!PMob || !PMob->CalledForHelp())
-            {
-                PDefender->m_OwnerID.id = PAttacker->PMaster->id;
-                PDefender->m_OwnerID.targid = PAttacker->PMaster->targid;
-            }
-        }
-        else
-        {
-            if (!PMob || !PMob->CalledForHelp())
-            {
-                PDefender->m_OwnerID.id = PAttacker->id;
-                PDefender->m_OwnerID.targid = PAttacker->targid;
-            }
-        }
+        battleutils::ClaimMob(PDefender, PAttacker);
         PDefender->updatemask |= UPDATE_STATUS;
 
         PDefender->StatusEffectContainer->DelStatusEffectsByFlag(EFFECTFLAG_DAMAGE);
@@ -3891,6 +3848,10 @@ namespace battleutils
             case EMobDifficulty::IncrediblyTough:
                 CharmTime = 22500;
                 break;
+
+            default:
+                // no-op
+                break;
             }
 
             //apply charm time extension from gear
@@ -3940,6 +3901,10 @@ namespace battleutils
             charutils::BuildingCharPetAbilityTable((CCharEntity*)PCharmer, (CPetEntity*)PVictim, PVictim->id);
             ((CCharEntity*)PCharmer)->pushPacket(new CCharUpdatePacket((CCharEntity*)PCharmer));
             ((CCharEntity*)PCharmer)->pushPacket(new CPetSyncPacket((CCharEntity*)PCharmer));
+            PCharmer->ForAlliance([&PVictim](CBattleEntity* PMember){
+                if (static_cast<CCharEntity*>(PMember)->PClaimedMob == PVictim)
+                    static_cast<CCharEntity*>(PMember)->PClaimedMob = nullptr;
+            });
             ((CMobEntity*)PVictim)->m_OwnerID.clean();
             PVictim->updatemask |= UPDATE_STATUS;
         }
@@ -3952,6 +3917,7 @@ namespace battleutils
             }
             PVictim->PAI->SetController(std::make_unique<CPlayerCharmController>(static_cast<CCharEntity*>(PVictim)));
 
+            battleutils::RelinquishClaim(static_cast<CCharEntity*>(PVictim));
             PVictim->PMaster = PCharmer;
             PVictim->updatemask |= UPDATE_ALL_CHAR;
         }
@@ -4044,6 +4010,9 @@ namespace battleutils
         case EMobDifficulty::IncrediblyTough:
             charmChance = 10.f;
             break;
+        default:
+            // no-op
+            break;
         }
 
         uint8 charmerBSTlevel = 0;
@@ -4094,17 +4063,92 @@ namespace battleutils
         return GetCharmChance(PCharmer, PVictim) > tpzrand::GetRandomNumber(100.f);
     }
 
-    void ClaimMob(CBattleEntity* PDefender, CBattleEntity* PAttacker)
+    void ClaimMob(CBattleEntity* PDefender, CBattleEntity* PAttacker, bool passing)
     {
         if (PDefender->objtype == TYPE_MOB)
         {
-            CMobEntity* mob = (CMobEntity*)PDefender;
-
-            mob->PEnmityContainer->UpdateEnmity(PAttacker, 0, 0);
-            if (PAttacker->objtype != TYPE_PC) {
-                if (PAttacker->PMaster != nullptr)
+            CBattleEntity* original = PAttacker;
+            if (PAttacker->objtype != TYPE_PC)
+            {
+                if (PAttacker->PMaster && PAttacker->PMaster->objtype == TYPE_PC)
+                { // claim by master
+                    PAttacker = PAttacker->PMaster;
+                }
+                else
                 {
-                    // claim by master
+                    return;
+                }
+            }
+            CBattleEntity* battleTarget = original->GetBattleTarget();
+            CMobEntity* mob = static_cast<CMobEntity*>(PDefender);
+            if (!passing)
+            {
+                mob->PEnmityContainer->UpdateEnmity(original, 0, 0, true, true);
+            }
+            if (PAttacker)
+            {
+                CCharEntity* attacker = static_cast<CCharEntity*>(PAttacker);
+                if (!passing)
+                {
+                    battleutils::DirtyExp(PDefender, PAttacker);
+                }
+                if (!battleTarget || battleTarget == PDefender || battleTarget != attacker->PClaimedMob || PDefender->isDead())
+                {
+                    if (PDefender->isAlive() && attacker->PClaimedMob && attacker->PClaimedMob != PDefender
+                        && attacker->PClaimedMob->isAlive() && attacker->PClaimedMob->m_OwnerID.id == attacker->id)
+                    { // unclaim any other living mobs owned by attacker
+                        static_cast<CMobController*>(attacker->PClaimedMob->PAI->GetController())->TapDeclaimTime();
+                        attacker->PClaimedMob = nullptr;
+                    }
+                    if (!mob->CalledForHelp())
+                    {
+                        if (battleutils::HasClaim(PAttacker, PDefender))
+                        { // mob is currently claimed by your alliance, update ownership
+                            mob->m_OwnerID.id = PAttacker->id;
+                            mob->m_OwnerID.targid = PAttacker->targid;
+                            if (PDefender->isAlive())
+                            { // ignore killing blow
+                                mob->updatemask |= UPDATE_STATUS;
+                                attacker->PClaimedMob = PDefender;
+                            }
+                        }
+                        else
+                        { // mob is unclaimed
+                            if (PDefender->isDead())
+                            { // always give rewards on the killing blow
+                                mob->m_OwnerID.id = PAttacker->id;
+                                mob->m_OwnerID.targid = PAttacker->targid;
+                                return;
+                            }
+                            CBattleEntity* highestClaim = mob->PEnmityContainer->GetHighestEnmity();
+                            PAttacker->ForAlliance([&](CBattleEntity* PMember){
+                                if (!highestClaim || highestClaim == PMember || highestClaim == PMember->PPet)
+                                { // someone in your alliance is top of hate list, claim for your alliance
+                                    mob->m_OwnerID.id = PAttacker->id;
+                                    mob->m_OwnerID.targid = PAttacker->targid;
+                                    if (PDefender->isAlive())
+                                    { // ignore killing blow
+                                        mob->updatemask |= UPDATE_STATUS;
+                                        attacker->PClaimedMob = PDefender;
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void DirtyExp(CBattleEntity* PDefender, CBattleEntity* PAttacker)
+    {
+        if (PDefender->objtype == TYPE_MOB)
+        {
+            CMobEntity* mob = static_cast<CMobEntity*>(PDefender);
+            if (PAttacker->objtype != TYPE_PC)
+            {
+                if (PAttacker->PMaster && PAttacker->PMaster->objtype == TYPE_PC)
+                {
                     PAttacker = PAttacker->PMaster;
                 }
                 else
@@ -4112,24 +4156,44 @@ namespace battleutils
                     PAttacker = nullptr;
                 }
             }
-
             if (PAttacker)
             {
-                if (mob->m_HiPCLvl < PAttacker->GetMLevel())
-                {
-                    mob->m_HiPCLvl = PAttacker->GetMLevel();
-                }
-
-                if (!mob->CalledForHelp())
-                {
-                    mob->m_OwnerID.id = PAttacker->id;
-                    mob->m_OwnerID.targid = PAttacker->targid;
-                }
-                mob->updatemask |= UPDATE_STATUS;
+                uint8 pcinzone = 0;
+                uint8 maxLevel = 0;
+                PAttacker->ForAlliance([&pcinzone, &maxLevel, &mob](CBattleEntity* PMember) {
+                    if (PMember->getZone() == mob->getZone() && distance(PMember->loc.p, mob->loc.p) < 100)
+                    {
+                        maxLevel = std::max(maxLevel, PMember->GetMLevel());
+                        pcinzone++;
+                    }
+                });
+                mob->m_HiPartySize = std::max(pcinzone, mob->m_HiPartySize);
+                mob->m_HiPCLvl = std::max(maxLevel, mob->m_HiPCLvl);
             }
         }
     }
 
+    void RelinquishClaim(CCharEntity* PChar)
+    {
+        CBattleEntity* mob = PChar->PClaimedMob;
+        if (mob && mob->isAlive() && mob->m_OwnerID.id == PChar->id)
+        { // if we currently own a mob
+            bool found = false;
+            static_cast<CBattleEntity*>(PChar)->ForAlliance([&PChar, &mob, &found](CBattleEntity* PMember){
+                CCharEntity* member = static_cast<CCharEntity*>(PMember);
+                if (member != PChar && !found && member->getZone() == PChar->getZone() && member->isAlive() && (!member->PClaimedMob || member->PClaimedMob == mob))
+                { // check if we can pass claim to someone else
+                    found = true;
+                    battleutils::ClaimMob(mob, PMember, true);
+                }
+            });
+            if (!found)
+            { // if mob didn't pass to someone else, unclaim it
+                static_cast<CMobController*>(mob->PAI->GetController())->TapDeclaimTime();
+            }
+        }
+        PChar->PClaimedMob = nullptr;
+    }
 
     int32 BreathDmgTaken(CBattleEntity* PDefender, int32 damage)
     {
@@ -4192,7 +4256,7 @@ namespace battleutils
         return damage;
     }
 
-    int32 PhysicalDmgTaken(CBattleEntity* PDefender, int32 damage, int16 damageType)
+    int32 PhysicalDmgTaken(CBattleEntity* PDefender, int32 damage, int16 damageType, bool IsCovered)
     {
         float resist = 1.f + PDefender->getMod(Mod::UDMGPHYS) / 100.f;
         resist = std::max(resist, 0.f);
@@ -4217,16 +4281,16 @@ namespace battleutils
         else
         {
             damage = HandleSevereDamage(PDefender, damage, true);
-            int16 absorbedMP = (int16)(damage * (PDefender->getMod(Mod::ABSORB_DMG_TO_MP) + PDefender->getMod(Mod::ABSORB_PHYSDMG_TO_MP)) / 100);
-            if (absorbedMP > 0)
-                PDefender->addMP(absorbedMP);
+            
+            ConvertDmgToMP(PDefender, damage, IsCovered);
+
             damage = HandleFanDance(PDefender, damage);
         }
 
         return damage;
     }
 
-    int32 RangedDmgTaken(CBattleEntity* PDefender, int32 damage, int16 damageType)
+    int32 RangedDmgTaken(CBattleEntity* PDefender, int32 damage, int16 damageType, bool IsCovered)
     {
         float resist = 1.0f + PDefender->getMod(Mod::UDMGRANGE) / 100.f;
         resist = std::max(resist, 0.f);
@@ -4252,9 +4316,9 @@ namespace battleutils
         else
         {
             damage = HandleSevereDamage(PDefender, damage, true);
-            int16 absorbedMP = (int16)(damage * (PDefender->getMod(Mod::ABSORB_DMG_TO_MP) + PDefender->getMod(Mod::ABSORB_PHYSDMG_TO_MP)) / 100);
-            if (absorbedMP > 0)
-                PDefender->addMP(absorbedMP);
+
+            ConvertDmgToMP(PDefender, damage, IsCovered);
+
             damage = HandleFanDance(PDefender, damage);
         }
 
@@ -4369,7 +4433,6 @@ namespace battleutils
         if (PDefender->StatusEffectContainer->HasStatusEffect(EFFECT_BIND))
         {
             uint16 BindBreakChance = 0; // 0-1000 (100.0%) scale. Maybe change to a float later..
-            uint16 LvDiffByExp = charutils::GetRealExp(PAttacker->GetMLevel(), PDefender->GetMLevel()); // This is temp.
             EMobDifficulty mobCheck = charutils::CheckMob(PAttacker->GetMLevel(), PDefender->GetMLevel());
 
             // Todo: replace with an actual calculated value based on level difference. Not it, Bro!
@@ -4398,6 +4461,10 @@ namespace battleutils
             case EMobDifficulty::VeryTough:
             case EMobDifficulty::IncrediblyTough:
                 BindBreakChance = 990;
+                break;
+
+            default:
+                // no-op
                 break;
             }
 
@@ -5005,8 +5072,7 @@ namespace battleutils
             PMaster = PEntity->PMaster;
         }
 
-        if (PTarget->m_OwnerID.id == 0 || PTarget->m_OwnerID.id == PMaster->id || PTarget->objtype == TYPE_PC ||
-                PTarget->objtype == TYPE_PET)
+        if (PTarget->m_OwnerID.id == PMaster->id)
         {
             return true;
         }
@@ -5014,11 +5080,11 @@ namespace battleutils
         bool found = false;
 
         PMaster->ForAlliance([&PTarget, &found](CBattleEntity* PChar){
-                if (PChar->id == PTarget->m_OwnerID.id)
-                {
-                    found = true;
-                }
-                });
+            if (PChar->id == PTarget->m_OwnerID.id)
+            {
+                found = true;
+            }
+        });
 
         return found;
     }
@@ -5561,5 +5627,133 @@ namespace battleutils
             default:
                 return DAMAGE_NONE;
         }
+    }
+
+    CBattleEntity* GetCoverAbilityUser(CBattleEntity* PCoverAbilityTarget, CBattleEntity* PMob)
+    {
+        CBattleEntity* PCoverAbilityUser = nullptr;
+        uint32 coverAbilityTargetID      = PCoverAbilityTarget->id;
+
+        //If the cover ability target is in a party, try to find a cover ability user
+        if (PCoverAbilityTarget->PParty != nullptr)
+        {
+            for (uint8 i = 0; i < PCoverAbilityTarget->PParty->members.size(); ++i)
+            {
+                CBattleEntity* member = PCoverAbilityTarget->PParty->members.at(i);
+
+                if (coverAbilityTargetID == member->GetLocalVar("COVER_ABILITY_TARGET") &&
+                    member->StatusEffectContainer->HasStatusEffect(EFFECT_COVER) &&
+                    member->isAlive())
+                {
+                    PCoverAbilityUser = member;
+                    break;
+                }
+            }
+
+            if (PCoverAbilityUser != nullptr)
+            {
+                float coverAbilityTargetX  = PCoverAbilityTarget->loc.p.x;
+                float coverAbilityTargetZ  = PCoverAbilityTarget->loc.p.z;
+                float mobX                 = PMob->loc.p.x;
+                float mobZ                 = PMob->loc.p.z;
+
+                float xdif      = coverAbilityTargetX - mobX;
+                float zdif      = coverAbilityTargetZ - mobZ;
+                float slope     = 0;
+                float maxSlope  = 0;
+                float minSlope  = 0;
+                bool zDependent = true; //using a slope where z is dependent var
+
+                if (abs(xdif) <= abs(zdif))
+                {
+                    slope = xdif / zdif;
+
+                    float angle = (float)atan((double)1) * 2 - atan(slope);
+
+                    float zoffset   = cos(angle) / 2;
+                    float xoffset   = sin(angle) / 2;
+                    float maxXpoint = mobX + xoffset;
+                    float maxZpoint = mobZ - zoffset;
+                    float minXpoint = mobX - xoffset;
+                    float minZpoint = mobZ + zoffset;
+
+                    maxSlope = ((maxXpoint - coverAbilityTargetX) / (maxZpoint - coverAbilityTargetZ));
+                    minSlope = ((minXpoint - coverAbilityTargetX) / (minZpoint - coverAbilityTargetZ));
+
+                    zDependent = false;
+                }
+                else
+                {
+                    slope = zdif / xdif;
+
+                    float angle = (float)atan((double)1) * 2 - atan(slope);
+
+                    float xoffset   = cos(angle) / 2;
+                    float zoffset   = sin(angle) / 2;
+                    float maxXpoint = mobX - xoffset;
+                    float maxZpoint = mobZ + zoffset;
+                    float minXpoint = mobX + xoffset;
+                    float minZpoint = mobZ - zoffset;
+
+                    maxSlope = (maxZpoint - coverAbilityTargetZ) / (maxXpoint - coverAbilityTargetX);
+                    minSlope = (minZpoint - coverAbilityTargetZ) / (minXpoint - coverAbilityTargetX);
+                }
+
+                if (distance(PCoverAbilityUser->loc.p, PMob->loc.p) <= (float)PMob->GetMeleeRange() &&                   //make sure cover user is within melee range
+                   distance(PCoverAbilityUser->loc.p, PMob->loc.p) <= distance(PCoverAbilityTarget->loc.p, PMob->loc.p)) //make sure cover user is closer to the mob than cover target
+                {
+                    float coverAbilityUserXdif = PCoverAbilityUser->loc.p.x - coverAbilityTargetX;
+                    float coverAbilityUserZdif = PCoverAbilityUser->loc.p.z - coverAbilityTargetZ;
+                    if (zDependent)
+                    {
+                        if ((coverAbilityUserZdif <= coverAbilityUserXdif * maxSlope) &&
+                            (coverAbilityUserZdif >= coverAbilityUserXdif * minSlope))
+                        {
+                            return PCoverAbilityUser;
+                        }
+                    }
+                    else
+                    {
+                        if ((coverAbilityUserXdif <= coverAbilityUserZdif * maxSlope) &&
+                            (coverAbilityUserXdif >= coverAbilityUserZdif * minSlope))
+                        {
+                            return PCoverAbilityUser;
+                        }
+                    }
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    bool IsMagicCovered(CCharEntity* PCoverAbilityUser)
+    {
+        if (PCoverAbilityUser != nullptr &&
+            PCoverAbilityUser->getMod(Mod::COVER_MAGIC_AND_RANGED) == 1)
+            {
+                return true;
+            }
+        return false;
+    }
+
+    void ConvertDmgToMP(CBattleEntity* PDefender, int32 damage, bool IsCovered)
+    {
+        double dmgToMPMods = 0.0;
+
+        //If attack was covered, get cover ability user's COVER_TO_MP mod
+        if (IsCovered)
+            dmgToMPMods += PDefender->getMod(Mod::COVER_TO_MP);
+
+        //Get ABSORB_DMG_TO_MP mod
+        dmgToMPMods += PDefender->getMod(Mod::ABSORB_DMG_TO_MP);
+
+        //Get ABSORB_PHYSDMG_TO_MP mod
+        dmgToMPMods += PDefender->getMod(Mod::ABSORB_PHYSDMG_TO_MP);
+
+        //Calculate final absorbed MP
+        int16 absorbedMP = static_cast<int16>(damage * (dmgToMPMods / 100.0));
+
+        if (absorbedMP > 0)
+            PDefender->addMP(absorbedMP);
     }
 };

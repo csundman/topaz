@@ -181,6 +181,7 @@ public:
 
     // Items
     int32 getEquipID(lua_State*);            // Gets the Item Id of the item in specified slot
+    int32 getEquippedItem(lua_State *);      // Returns the item object from specified slot
     int32 hasItem(lua_State*);               // Check to see if Entity has item in inventory (hasItem(itemNumber))
     int32 addItem(lua_State*);               // Add item to Entity inventory (additem(itemNumber,quantity))
     int32 delItem(lua_State*);
@@ -307,6 +308,8 @@ public:
     int32 getCurrentMission(lua_State*);    // Gets the current mission
     int32 hasCompletedMission(lua_State*);  // Checks if mission has been completed
     int32 completeMission(lua_State*);      // Complete Mission
+    int32 setMissionLogEx(lua_State*);      // Sets mission log extra data to correctly track progress in branching missions.
+    int32 getMissionLogEx(lua_State*);      // Gets mission log extra data.
 
     int32 addAssault(lua_State*);           // Add Mission
     int32 delAssault(lua_State*);           // Delete Mission from Mission Log
@@ -430,7 +433,6 @@ public:
 
     int32 checkSoloPartyAlliance(lua_State*);        // Check if Player is in Party or Alliance 0=Solo 1=Party 2=Alliance
 
-    int32 checkFovAllianceAllowed(lua_State*);       // checks the map config, 1 if alliance is allowed to farm Fov pages
     int32 checkKillCredit(lua_State*);
 
     // Instances
@@ -460,6 +462,10 @@ public:
     int32 sendReraise(lua_State*);            // send raise request to char
     int32 sendTractor(lua_State*);            // send tractor request to char
 
+    int32 countdown(lua_State* L);
+    int32 enableEntities(lua_State* L);
+    int32 independantAnimation(lua_State* L);
+
     int32 engage(lua_State* L);
     int32 isEngaged(lua_State* L);
     int32 disengage(lua_State* L);
@@ -482,6 +488,8 @@ public:
 
     int32 recalculateStats(lua_State* L);
     int32 checkImbuedItems(lua_State* L);
+
+    int32 isDualWielding(lua_State*);          // Checks if the battle entity is dual wielding
 
     // Enmity
     int32 getCE(lua_State*);                   //gets current CE the mob has towards the player

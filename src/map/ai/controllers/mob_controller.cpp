@@ -1,4 +1,4 @@
-/*
+﻿/*
 ===========================================================================
 
 Copyright (c) 2010-2015 Darkstar Dev Teams
@@ -114,11 +114,7 @@ bool CMobController::CheckDetection(CBattleEntity* PTarget)
         TapDeaggroTime();
     }
 
-    if (m_Tick >= m_DeaggroTime + 25s)
-    {
-        return true;
-    }
-    return false;
+    return PMob->CanDeaggro() && (m_Tick >= m_DeaggroTime + 25s);
 }
 
 void CMobController::TryLink()
@@ -484,6 +480,16 @@ void CMobController::CastSpell(SpellID spellid)
 
 void CMobController::DoCombatTick(time_point tick)
 {
+    if (PMob->m_OwnerID.targid != 0 && static_cast<CCharEntity*>(PMob->GetEntity(PMob->m_OwnerID.targid))->PClaimedMob != static_cast<CBattleEntity*>(PMob))
+    {
+        if (m_Tick >= m_DeclaimTime + 3s)
+        {
+            PMob->m_OwnerID.clean();
+            PMob->updatemask |= UPDATE_STATUS;
+        }
+    }
+
+
     HandleEnmity();
     PTarget = static_cast<CBattleEntity*>(PMob->GetEntity(PMob->GetBattleTargetID()));
 
@@ -509,7 +515,7 @@ void CMobController::DoCombatTick(time_point tick)
     {
         return;
     }
-    else if (m_Tick >= m_LastMobSkillTime && tpzrand::GetRandomNumber(100) < PMob->TPUseChance() && MobSkill())
+    else if (m_Tick >= m_LastMobSkillTime && tpzrand::GetRandomNumber(10000) <= PMob->TPUseChance() && MobSkill())
     {
         return;
     }
@@ -727,6 +733,8 @@ void CMobController::DoRoamTick(time_point tick)
                 if (PMob->GetHPP() == 100)
                 {
                     // at max health undirty exp
+                    PMob->m_HiPCLvl = 0;
+                    PMob->m_HiPartySize = 0;
                     PMob->m_giveExp = true;
                 }
             }
@@ -993,6 +1001,11 @@ bool CMobController::CanAggroTarget(CBattleEntity* PTarget)
 void CMobController::TapDeaggroTime()
 {
     m_DeaggroTime = m_Tick;
+}
+
+void CMobController::TapDeclaimTime()
+{
+    m_DeclaimTime = m_Tick;
 }
 
 bool CMobController::Cast(uint16 targid, SpellID spellid)

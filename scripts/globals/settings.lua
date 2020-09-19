@@ -30,7 +30,10 @@ ENABLE_VOIDWATCH = 0 -- Not an expansion, but has its own storyline.
 -- FIELDS OF VALOR/Grounds of Valor settings
 ENABLE_FIELD_MANUALS  = 1 -- Enables Fields of Valor
 ENABLE_GROUNDS_TOMES  = 1 -- Enables Grounds of Valor
+ENABLE_SURVIVAL_GUIDE = 1 -- Enables Survival Guides
 REGIME_WAIT = 1 -- Make people wait till 00:00 game time as in retail. If it's 0, there is no wait time.
+FOV_REWARD_ALLIANCE = 0 -- Allow Fields of Valor rewards while being a member of an alliance. (default retail behavior: 0)
+GOV_REWARD_ALLIANCE = 1 -- Allow Grounds of Valor rewards while being a member of an alliance. (default retail behavior: 1)
 
 -- TREASURE CASKETS
 -- Retail droprate = 0.1 (10%) with no other effects active
@@ -51,7 +54,7 @@ NORMAL_MOB_MAX_LEVEL_RANGE_MIN = 0 -- Lower Bound of Max Level Range for Normal 
 NORMAL_MOB_MAX_LEVEL_RANGE_MAX = 0 -- Upper Bound of Max Level Range for Normal Mobs (0 = Uncapped)
 START_GIL = 10 -- Amount of gil given to newly created characters.
 START_INVENTORY = 30 -- Starting inventory and satchel size.  Ignores values < 30.  Do not set above 80!
-OPENING_CUTSCENE_ENABLE = 0 -- Set to 1 to enable opening cutscenes, 0 to disable.
+NEW_CHARACTER_CUTSCENE = 1 -- Set to 1 to enable opening cutscenes, 0 to disable.
 SUBJOB_QUEST_LEVEL = 18 -- Minimum level to accept either subjob quest.  Set to 0 to start the game with subjobs unlocked.
 ADVANCED_JOB_LEVEL = 30 -- Minimum level to accept advanced job quests.  Set to 0 to start the game with advanced jobs.
 ALL_MAPS = 0 -- Set to 1 to give starting characters all the maps.
@@ -94,8 +97,8 @@ CHEST_MIN_ILLUSION_TIME  = 1800  -- 30 minutes
 
 -- Sets spawn type for: Behemoth, Fafnir, Adamantoise, King Behemoth, Nidhog, Aspidochelone.
 -- Use 0 for timed spawns, 1 for force pop only, 2 for both
-LandKingSystem_NQ = 0
-LandKingSystem_HQ = 0
+LandKingSystem_NQ = 1
+LandKingSystem_HQ = 1
 
 -- DYNAMIS SETTINGS
     BETWEEN_2DYNA_WAIT_TIME = 24       -- Hours before player can re-enter Dynamis. Default is 1 Earthday (24 hours).
@@ -126,7 +129,7 @@ ELEMENTAL_DEBUFF_DURATION = 120 -- base duration of elemental debuffs
 AQUAVEIL_COUNTER = 1  -- Base amount of hits Aquaveil absorbs to prevent spell interrupts. Retail is 1.
 ABSORB_SPELL_AMOUNT = 8 -- how much of a stat gets absorbed by DRK absorb spells - expected to be a multiple of 8.
 ABSORB_SPELL_TICK = 9 -- duration of 1 absorb spell tick
-SNEAK_INVIS_DURATION_MULTIPLIER = 1 -- multiplies duration of sneak,invis,deodorize to reduce player torture. 1 = retail behavior.
+SNEAK_INVIS_DURATION_MULTIPLIER = 1 -- multiplies duration of sneak, invis, deodorize to reduce player torture. 1 = retail behavior.
 USE_OLD_CURE_FORMULA = false -- true/false. if true, uses older cure formula (3*MND + VIT + 3*(healing skill/5)) // cure 6 will use the newer formula
 USE_OLD_MAGIC_DAMAGE = false -- true/false. if true, uses older magic damage formulas
 
