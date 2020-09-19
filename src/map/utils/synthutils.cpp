@@ -418,7 +418,7 @@ uint8 calcSynthResult(CCharEntity* PChar)
         }
 
         #ifdef _TPZ_SYNTH_DEBUG_MESSAGES_
-        ShowDebug(CL_CYAN"HQ Tier: %i HQ Chance: %g Random: %g SkillID: %u\n" CL_RESET, hqtier, chance, random, skillID);
+        ShowDebug(CL_CYAN"HQ Tier: %i HQ Chance: %g Random: %g \n" CL_RESET, hqtier, chance, random);
         #endif
 
         if(random < chance && canHQ) // we try for HQ
